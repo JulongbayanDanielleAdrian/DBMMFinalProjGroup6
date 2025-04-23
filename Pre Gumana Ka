@@ -1,0 +1,336 @@
+import sys
+import sqlite3
+from PyQt5.QtCore import Qt
+from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QLineEdit, QPushButton, QLabel, QTableWidget, QTableWidgetItem, QFormLayout, QDateEdit, QMessageBox, QStackedWidget, QHBoxLayout, QListWidget
+from PyQt5.QtGui import QIcon
+
+
+class MedicineApp(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Medicine Assistant")
+        self.setGeometry(100, 100, 450, 400)
+        self.conn = sqlite3.connect("medicine.db")
+        self.cursor = self.conn.cursor()
+        self.create_tables()
+        self.stack = QStackedWidget(self)
+        self.init_user_ui()
+        self.init_medicine_ui()
+        self.stack.addWidget(self.select_widget)
+        self.stack.addWidget(self.medicine_widget)
+        self.stack.setCurrentWidget(self.select_widget)
+        layout = QVBoxLayout()
+        layout.addWidget(self.stack)
+        self.setLayout(layout)
+
+    def create_tables(self):
+        self.cursor.execute("""
+        CREATE TABLE IF NOT EXISTS users(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            userID TEXT NOT NULL
+        )
+        """)
+        self.cursor.execute("""
+        CREATE TABLE IF NOT EXISTS medicine(
+        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+        name TEXT NOT NULL,
+        scheduled_time TEXT NOT NULL,
+        amount_left INTEGER NOT NULL,
+        user_id INTEGER NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        """)
+        self.conn.commit()
+
+    def init_user_ui(self):
+        self.setWindowIcon(QIcon('medicine.ico'))
+        self.select_widget = QWidget()
+        layout = QVBoxLayout()
+        self.add_button = QPushButton("Add User")
+        self.add_button.clicked.connect(self.add_user_ui)
+        self.remove_button = QPushButton("Remove User")
+        self.remove_button.clicked.connect(self.remove_user)
+        self.user_list = QListWidget()
+        self.user_list.clicked.connect(self.select_user_from_list)
+        self.show_user_list()
+        layout.addWidget(self.add_button)
+        layout.addWidget(self.remove_button)
+        layout.addWidget(self.user_list)
+        self.select_widget.setLayout(layout)
+
+    def remove_user(self):
+        selected_item = self.user_list.currentItem()
+        if not selected_item:
+            QMessageBox.warning(self, "Selection Error", "Please select a user to remove.")
+            return
+
+        username = selected_item.text()
+        reply = QMessageBox.question(self, 'Confirm Removal',
+                                     f"Are you sure you want to remove the user '{username}' and all their associated medicines?",
+                                     QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+
+        if reply == QMessageBox.Yes:
+            self.cursor.execute("SELECT id FROM users WHERE username = ?", (username,))
+            user = self.cursor.fetchone()
+            if user:
+                user_id = user[0]
+                self.cursor.execute("DELETE FROM medicine WHERE user_id = ?", (user_id,))
+                self.conn.commit()
+                self.cursor.execute("DELETE FROM users WHERE id = ?", (user_id,))
+                self.conn.commit()
+                self.show_user_list()
+                QMessageBox.information(self, "User Removed", f"User '{username}' and their medicines have been removed.")
+            else:
+                QMessageBox.warning(self, "Error", "User not found.")
+
+    def show_user_list(self):
+        self.cursor.execute("SELECT id, username FROM users")
+        users = self.cursor.fetchall()
+        merge_sort(users)
+        self.user_list.clear()
+        for user in users:
+            self.user_list.addItem(user[1])
+
+    def select_user_from_list(self):
+        selected_item = self.user_list.currentItem()
+        if selected_item:
+            username = selected_item.text()
+            self.cursor.execute("SELECT id, username, userID FROM users WHERE username = ?", (username,))
+            user = self.cursor.fetchone()
+            if user:
+                self.current_user_id = user[0]
+                self.current_username = user[1]
+                self.current_userID = user[2]
+                self.update_user()
+                self.stack.setCurrentWidget(self.medicine_widget)
+                self.load_medicines()
+                QMessageBox.information(self, "Selection Successful", f"Welcome, {username}!")
+
+    def add_user_ui(self):
+        self.user_widget = QWidget()
+        layout = QVBoxLayout()
+        self.form_layout = QFormLayout()
+        self.username_input = QLineEdit()
+        self.userID_input = QLineEdit()
+        self.form_layout.addRow("Username: ", self.username_input)
+        self.form_layout.addRow("User ID: ", self.userID_input)
+        self.register_button = QPushButton("Register")
+        self.register_button.clicked.connect(self.add_user)
+        self.back_button = QPushButton("Back To Main Menu")
+        self.back_button.clicked.connect(self.back)
+        layout.addLayout(self.form_layout)
+        layout.addWidget(self.register_button)
+        layout.addWidget(self.back_button)
+        self.user_widget.setLayout(layout)
+        self.stack.addWidget(self.user_widget)
+        self.stack.setCurrentWidget(self.user_widget)
+
+    def back(self):
+        self.show_user_list()
+        self.stack.setCurrentWidget(self.select_widget)
+        QMessageBox.information(self, "Add User", "Returning to Main Menu...")
+
+    def add_user(self):
+        username = self.username_input.text()
+        userID = self.userID_input.text()
+
+        if not username or not userID:
+            QMessageBox.warning(self, "Input Error", "Both fields must be filled!")
+            return
+
+        try:
+            self.cursor.execute("INSERT INTO users (username, userID) VALUES (?, ?)", (username, userID))
+            self.conn.commit()
+            QMessageBox.information(self, 'Action Success', "User added successfully!")
+
+            self.stack.setCurrentWidget(self.select_widget)
+            self.show_user_list()
+        except sqlite3.IntegrityError:
+            QMessageBox.warning(self, 'Action Failed', "Username already exists.")
+
+    def init_medicine_ui(self):
+        self.medicine_widget = QWidget()
+        layout = QVBoxLayout()
+        self.setWindowIcon(QIcon('medicine.ico'))
+        self.username_label = QLabel("Username: ")
+        self.userid_label = QLabel("User ID: ")
+        self.form_layout = QFormLayout()
+        self.name_input = QLineEdit()
+        self.time_input = QLineEdit()
+        self.amount_input = QLineEdit()
+        self.form_layout.addRow("Medicine Name:", self.name_input)
+        self.form_layout.addRow("Time:", self.time_input)
+        self.form_layout.addRow("Amount Left:", self.amount_input)
+        self.add_button = QPushButton("Add Medicine")
+        self.add_button.clicked.connect(self.add_medicine)
+        self.delete_button = QPushButton("Delete Medicine")
+        self.delete_button.clicked.connect(self.delete_medicine)
+        self.sort_button = QPushButton("Sort Users Alphabetically")
+        self.sort_button.clicked.connect(self.load_medicines)
+        self.user_intake_button = QPushButton("Take Medicine")
+        self.user_intake_button.clicked.connect(self.take_medicine)
+        self.users_button = QPushButton("Log Out")
+        self.users_button.clicked.connect(self.log_out)
+        self.amount_remaining = QPushButton("")
+        
+        self.table = QTableWidget()
+        self.table.setColumnCount(4)
+        self.table.setHorizontalHeaderLabels(["ID", "Medicine Name", "Time", "Amount Left"])
+
+        layout.addWidget(self.username_label)
+        layout.addWidget(self.userid_label)
+        layout.addLayout(self.form_layout)
+        layout.addWidget(self.add_button)
+        layout.addWidget(self.delete_button)
+        layout.addWidget(self.users_button)
+        layout.addWidget(self.user_intake_button)
+        layout.addWidget(self.table)
+
+        self.medicine_widget.setLayout(layout)
+
+    def update_user(self):
+        self.username_label.setText(f"Username: {self.current_username}")
+        self.userid_label.setText(f"User ID: {self.current_userID}")
+
+    def take_medicine(self):
+        selected_row = self.table.currentRow()
+        if selected_row == -1:
+            QMessageBox.warning(self, "Taking Medicine Error", "No selected medicine!")
+            return
+        medicine_id = self.table.item(selected_row, 0).text()
+
+        self.cursor.execute("SELECT amount_left FROM medicine WHERE id = ?", (medicine_id,))
+        result = self.cursor.fetchone()
+        if result:
+            amount = result[0]
+        else:
+            QMessageBox.warning(self, 'Error', 'Medicine not found.')
+            return
+
+        reply = QMessageBox.question(self, 'Taking Medicine',
+                                     "Have you taken this medicine?",
+                                     QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        if reply == QMessageBox.Yes:
+            if amount > 0:
+                self.cursor.execute("UPDATE medicine SET amount_left = amount_left - 1 WHERE id = ?", (medicine_id,))
+                self.conn.commit()
+                self.load_medicines()
+            elif amount == 0:
+                QMessageBox.warning(self, 'Amount Remaining', 'No supply left!')
+                return
+            else:
+                return
+        else:
+            return
+
+    def log_out(self):
+        self.current_user_id = None
+        self.table.setRowCount(0)
+        self.stack.setCurrentWidget(self.select_widget)
+        self.show_user_list()
+
+        QMessageBox.information(self, "Logging out...", "User successfully logged out.")
+
+    def load_medicines(self):
+        self.table.setRowCount(0)
+        self.cursor.execute("SELECT * FROM medicine WHERE user_id = ?", (self.current_user_id,))
+        medicines = self.cursor.fetchall()
+        merge_sort(medicines)
+        if not medicines:
+            QMessageBox.information(self, "No Medicines", "This user has no medicines listed.")
+            return
+        self.table.setRowCount(len(medicines))
+        for row, med in enumerate(medicines):
+            for col, value in enumerate(med):
+                self.table.setItem(row, col, QTableWidgetItem(str(value)))
+
+    def add_medicine(self):
+        name = self.name_input.text()
+        scheduled_time = self.time_input.text()
+        amount_left = self.amount_input.text()
+
+        if not name or not scheduled_time or not amount_left:
+            QMessageBox.warning(self, "Input Error", "All fields must be filled!")
+            return
+        try:
+            amount_left = int(amount_left)
+        except ValueError:
+            QMessageBox.warning(self, "Input Error", "Amount Left must be a valid number!")
+            return
+
+        self.cursor.execute("""
+        INSERT INTO medicine (name, scheduled_time, amount_left, user_id)
+        VALUES (?, ?, ?, ?)
+        """, (name, scheduled_time, amount_left, self.current_user_id))
+        self.conn.commit()
+        self.load_medicines()
+
+    def delete_medicine(self):
+        selected_row = self.table.currentRow()
+        if selected_row == -1:
+            QMessageBox.warning(self, "Deletion Error", "No selected medicine!")
+            return
+        medicine_id = self.table.item(selected_row, 0).text()
+        reply = QMessageBox.question(self, 'Removing Medicine',
+                                     "Are you sure you want to remove medicine?",
+                                     QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        if reply == QMessageBox.Yes:
+            self.cursor.execute("DELETE FROM medicine WHERE id = ?", (medicine_id,))
+            self.conn.commit()
+            self.load_medicines()
+        else:
+            return
+
+    def closeEvent(self, event):
+        reply = QMessageBox.question(self, 'Exit Application',
+                                     "Are you sure you want to exit?",
+                                     QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        if reply == QMessageBox.Yes:
+            self.conn.commit()
+            self.conn.close()
+            event.accept()
+        else:
+            event.ignore()
+            
+def merge_sort(arr):
+    if len(arr) > 1:
+        mid = len(arr) // 2 
+        left_half = arr[:mid] 
+        right_half = arr[mid:]
+
+        merge_sort(left_half)
+        merge_sort(right_half)  
+
+        i = j = k = 0
+
+        
+        while i < len(left_half) and j < len(right_half):
+            if left_half[i][1].lower() < right_half[j][1].lower():
+                arr[k] = left_half[i]
+                i += 1
+            else:
+                arr[k] = right_half[j]
+                j += 1
+            k += 1
+
+        
+        while i < len(left_half):
+            arr[k] = left_half[i]
+            i += 1
+            k += 1
+
+        
+        while j < len(right_half):
+            arr[k] = right_half[j]
+            j += 1
+            k += 1
+
+def main():
+    app = QApplication(sys.argv)
+    window = MedicineApp()
+    window.show()
+    sys.exit(app.exec_())
+
+if __name__ == "__main__":
+    main()
