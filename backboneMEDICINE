@@ -1,0 +1,139 @@
+import sqlite3
+from kivy.app import App
+from kivy.uix.screenmanager import Screen, ScreenManager
+from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.button import Button
+from kivy.uix.label import Label
+from kivy.uix.textinput import TextInput
+
+# Database Setup
+def init_db():
+    conn = sqlite3.connect("users.db")
+    cursor = conn.cursor()
+    cursor.execute("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, username TEXT, password TEXT)")
+    conn.commit()
+    conn.close()
+
+def register_user(username, password):
+    conn = sqlite3.connect("users.db")
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO users (username, password) VALUES (?, ?)", (username, password))
+    conn.commit()
+    conn.close()
+
+def authenticate_user(username, password):
+    conn = sqlite3.connect("users.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT id FROM users WHERE username=? AND password=?", (username, password))
+    user = cursor.fetchone()
+    conn.close()
+    return user is not None  # Returns True if user exists
+
+def update_user(old_username, new_username, new_password):
+    conn = sqlite3.connect("users.db")
+    cursor = conn.cursor()
+    cursor.execute("UPDATE users SET username=?, password=? WHERE username=?", (new_username, new_password, old_username))
+    conn.commit()
+    conn.close()
+
+def delete_user(username):
+    conn = sqlite3.connect("users.db")
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM users WHERE username=?", (username,))
+    conn.commit()
+    conn.close()
+
+class RegisterScreen(Screen):
+    def __init__(self, **kwargs):
+        super().__init__(name="register", **kwargs)
+        layout = BoxLayout(orientation="vertical", padding=10, spacing=10)
+
+        self.input_username = TextInput(hint_text="Enter Username")
+        self.input_password = TextInput(hint_text="Enter Password", password=True)
+        register_button = Button(text="Register", on_press=self.register_user)
+        back_button = Button(text="Go to Login", on_press=lambda x: setattr(self.manager, "current", "login"))
+
+        layout.add_widget(self.input_username)
+        layout.add_widget(self.input_password)
+        layout.add_widget(register_button)
+        layout.add_widget(back_button)
+        self.add_widget(layout)
+
+    def register_user(self, instance):
+        username = self.input_username.text
+        password = self.input_password.text
+        if username and password:
+            register_user(username, password)
+            self.manager.current = "login"  # Redirect to login screen
+
+class LoginScreen(Screen):
+    def __init__(self, **kwargs):
+        super().__init__(name="login", **kwargs)
+        layout = BoxLayout(orientation="vertical", padding=10, spacing=10)
+
+        self.input_username = TextInput(hint_text="Enter Username")
+        self.input_password = TextInput(hint_text="Enter Password", password=True)
+        login_button = Button(text="Login", on_press=self.login)
+        back_button = Button(text="Go to Register", on_press=lambda x: setattr(self.manager, "current", "register"))
+
+        layout.add_widget(self.input_username)
+        layout.add_widget(self.input_password)
+        layout.add_widget(login_button)
+        layout.add_widget(back_button)
+        self.add_widget(layout)
+
+    def login(self, instance):
+        username = self.input_username.text
+        password = self.input_password.text
+        if authenticate_user(username, password):
+            self.manager.current = "manage"
+            self.manager.get_screen("manage").set_user(username)
+
+class ManageUserScreen(Screen):
+    def __init__(self, **kwargs):
+        super().__init__(name="manage", **kwargs)
+        self.username = ""
+        layout = BoxLayout(orientation="vertical", padding=10, spacing=10)
+
+        self.label = Label(text="Welcome!")
+        self.input_new_username = TextInput(hint_text="New Username")
+        self.input_new_password = TextInput(hint_text="New Password", password=True)
+        update_button = Button(text="Update Info", on_press=self.update_info)
+        delete_button = Button(text="Delete Account", on_press=self.delete_account)
+        logout_button = Button(text="Logout", on_press=lambda x: setattr(self.manager, "current", "login"))
+
+        layout.add_widget(self.label)
+        layout.add_widget(self.input_new_username)
+        layout.add_widget(self.input_new_password)
+        layout.add_widget(update_button)
+        layout.add_widget(delete_button)
+        layout.add_widget(logout_button)
+        self.add_widget(layout)
+
+    def set_user(self, username):
+        self.username = username
+        self.label.text = f"Welcome, {username}!"
+
+    def update_info(self, instance):
+        new_username = self.input_new_username.text
+        new_password = self.input_new_password.text
+        if new_username and new_password:
+            update_user(self.username, new_username, new_password)
+            self.username = new_username
+            self.label.text = f"Updated, {new_username}!"
+
+    def delete_account(self, instance):
+        delete_user(self.username)
+        self.manager.current = "register"
+
+class UserApp(App):
+    def build(self):
+        init_db()  # Ensure database exists
+        sm = ScreenManager()
+        sm.add_widget(RegisterScreen())
+        sm.add_widget(LoginScreen())
+        sm.add_widget(ManageUserScreen())
+        return sm
+
+if __name__ == "__main__":
+    UserApp().run()
