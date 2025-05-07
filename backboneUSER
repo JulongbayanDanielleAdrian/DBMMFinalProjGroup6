@@ -1,0 +1,165 @@
+import sqlite3
+from kivy.app import App
+from kivy.uix.screenmanager import Screen, ScreenManager
+from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.button import Button
+from kivy.uix.label import Label
+from kivy.uix.textinput import TextInput
+
+# Database setup
+def init_db():
+    """Initialize the database."""
+    conn = sqlite3.connect("users.db")
+    cursor = conn.cursor()
+    cursor.execute("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, name TEXT)")
+    conn.commit()
+    conn.close()
+
+def add_user(name):
+    """Insert a user into the database."""
+    conn = sqlite3.connect("users.db")
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO users (name) VALUES (?)", (name,))
+    conn.commit()
+    conn.close()
+
+def get_users():
+    """Retrieve all users from the database."""
+    conn = sqlite3.connect("users.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT name FROM users")
+    users = [user[0] for user in cursor.fetchall()]
+    conn.close()
+    return users
+
+def update_user(user_id, new_name):
+    """Update a user's name based on their ID."""
+    conn = sqlite3.connect("users.db")
+    cursor = conn.cursor()
+    cursor.execute("UPDATE users SET name=? WHERE id=?", (new_name, user_id))
+    conn.commit()
+    conn.close()
+
+def delete_user(user_id):
+    """Delete a user based on their ID."""
+    conn = sqlite3.connect("users.db")
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM users WHERE id=?", (user_id,))
+    conn.commit()
+    conn.close()
+
+class FirstScreen(Screen):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        layout = BoxLayout(orientation="vertical", padding=10, spacing=10)
+
+        label = Label(text="Medicine Part CRUD (trying)", font_size = 50)
+        button1 = Button(text="Add Medicine", on_press=lambda x: setattr(self.manager, "current", "create"))
+        button2 = Button(text="Show Medicines", on_press=lambda x: setattr(self.manager, "current", "read"))
+        button3 = Button(text="Update Medicine", on_press=lambda x: setattr(self.manager, "current", "update"))
+        button4 = Button(text="Delete Medicine", on_press=lambda x: setattr(self.manager, "current", "delete"))
+
+        layout.add_widget(label)
+        layout.add_widget(button1)
+        layout.add_widget(button2)
+        layout.add_widget(button3)
+        layout.add_widget(button4)
+        self.add_widget(layout)
+
+class CreateUserScreen(Screen):
+    def __init__(self, **kwargs):
+        super().__init__(name="create", **kwargs)
+        layout = BoxLayout(orientation="vertical", padding=10, spacing=10)
+
+        self.input = TextInput(hint_text="Enter Name")
+        add_button = Button(text="Add Medicine", on_press=self.add_user)
+        back_button = Button(text="Back to Main", on_press=lambda x: setattr(self.manager, "current", "main"))
+
+        layout.add_widget(self.input)
+        layout.add_widget(add_button)
+        layout.add_widget(back_button)
+        self.add_widget(layout)
+
+    def add_user(self, instance):
+        """Calls the function to add a user."""
+        add_user(self.input.text)
+        self.input.text = ""
+
+class ReadUsersScreen(Screen):
+    def __init__(self, **kwargs):
+        super().__init__(name="read", **kwargs)
+        layout = BoxLayout(orientation="vertical", padding=10, spacing=10)
+
+        self.label = Label(text="Medicine:\n(Loading...)")
+        refresh_button = Button(text="Refresh", on_press=self.load_users)
+        back_button = Button(text="Back to Main", on_press=lambda x: setattr(self.manager, "current", "main"))
+        layout.add_widget(self.label)
+        layout.add_widget(refresh_button)
+        layout.add_widget(back_button)
+        self.add_widget(layout)
+
+    def on_enter(self):
+        """Loads users when entering screen."""
+        self.load_users(None)
+
+    def load_users(self, instance):
+        """Calls the function to get all users."""
+        users = get_users()
+        self.label.text = "Medicine:\n" + "\n".join(users)
+
+class UpdateUserScreen(Screen):
+    def __init__(self, **kwargs):
+        super().__init__(name="update", **kwargs)
+        layout = BoxLayout(orientation="vertical", padding=10, spacing=10)
+
+        self.input_id = TextInput(hint_text="Enter User ID")
+        self.input_name = TextInput(hint_text="Enter New Name")
+        update_button = Button(text="Update Medicine", on_press=self.update_user)
+        back_button = Button(text="Back to Main", on_press=lambda x: setattr(self.manager, "current", "main"))
+
+        layout.add_widget(self.input_id)
+        layout.add_widget(self.input_name)
+        layout.add_widget(update_button)
+        layout.add_widget(back_button)
+        self.add_widget(layout)
+
+    def update_user(self, instance):
+        """Calls the function to update a user."""
+        update_user(int(self.input_id.text), self.input_name.text)
+        self.input_id.text = ""
+        self.input_name.text = ""
+
+class DeleteUserScreen(Screen):
+    def __init__(self, **kwargs):
+        super().__init__(name="delete", **kwargs)
+        layout = BoxLayout(orientation="vertical", padding=10, spacing=10)
+
+        self.input_id = TextInput(hint_text="Enter Medicine ID")
+        delete_button = Button(text="Delete Medicine", on_press=self.delete_user)
+        back_button = Button(text="Back to Main", on_press=lambda x: setattr(self.manager, "current", "main"))
+
+        layout.add_widget(self.input_id)
+        layout.add_widget(delete_button)
+        layout.add_widget(back_button)
+        self.add_widget(layout)
+
+    def delete_user(self, instance):
+        """Calls the function to delete a user."""
+        delete_user(int(self.input_id.text))
+        self.input_id.text = ""
+
+class CrudApp(App):
+    def build(self):
+        init_db()  # Initialize database on startup
+
+        sm = ScreenManager()
+        sm.add_widget(FirstScreen(name="main"))
+        sm.add_widget(CreateUserScreen())
+        sm.add_widget(ReadUsersScreen())
+        sm.add_widget(UpdateUserScreen())
+        sm.add_widget(DeleteUserScreen())
+
+        return sm
+
+if __name__ == "__main__":
+    CrudApp().run()
