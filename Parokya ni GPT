@@ -1,0 +1,88 @@
+from kivy.app import App
+from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.textinput import TextInput
+from kivy.uix.button import Button
+from kivy.uix.label import Label
+from kivy.uix.popup import Popup
+from kivy.uix.listview import ListView, ListItemButton
+import sqlite3
+
+class MedicineApp(BoxLayout):
+    def __init__(self, **kwargs):
+        super().__init__(orientation='vertical', **kwargs)
+
+        self.conn = sqlite3.connect("medicine.db")
+        self.cursor = self.conn.cursor()
+        self.create_tables()
+
+        # User Management UI
+        self.user_input = TextInput(hint_text="Enter username")
+        self.add_widget(self.user_input)
+
+        self.user_id_input = TextInput(hint_text="Enter user ID")
+        self.add_widget(self.user_id_input)
+
+        self.add_user_btn = Button(text="Add User", on_press=self.add_user)
+        self.add_widget(self.add_user_btn)
+
+        self.user_list = ListView()
+        self.add_widget(self.user_list)
+
+        self.load_users()
+
+    def create_tables(self):
+        """Creates the necessary SQLite tables."""
+        self.cursor.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            userID TEXT NOT NULL
+        )
+        """)
+        self.cursor.execute("""
+        CREATE TABLE IF NOT EXISTS medicine (
+            id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+            name TEXT NOT NULL,
+            scheduled_time TEXT NOT NULL,
+            amount_left INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        """)
+        self.conn.commit()
+
+    def add_user(self, instance):
+        """Adds a new user if valid input is provided."""
+        username = self.user_input.text.strip()
+        user_id = self.user_id_input.text.strip()
+        if not username or not user_id:
+            self.show_popup("Error", "All fields must be filled!")
+            return
+        try:
+            self.cursor.execute("INSERT INTO users (username, userID) VALUES (?, ?)", (username, user_id))
+            self.conn.commit()
+            self.user_input.text = ""
+            self.user_id_input.text = ""
+            self.load_users()
+        except sqlite3.IntegrityError:
+            self.show_popup("Action Failed", "Username already exists.")
+
+    def load_users(self):
+        """Loads the users into the list."""
+        self.cursor.execute("SELECT username FROM users")
+        users = [user[0] for user in self.cursor.fetchall()]
+        self.user_list.adapter.data.clear()
+        self.user_list.adapter.data.extend(users)
+        self.user_list._trigger_update()
+
+    def show_popup(self, title, message):
+        """Displays an error or success popup."""
+        popup = Popup(title=title, content=Label(text=message), size_hint=(None, None), size=(300, 200))
+        popup.open()
+
+class MedicineAppMain(App):
+    def build(self):
+        return MedicineApp()
+
+if __name__ == "__main__":
+    MedicineAppMain().run()
