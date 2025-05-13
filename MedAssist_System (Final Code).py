@@ -63,6 +63,7 @@ def init_db():
         # Schedule table
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS schedule (
+            schedule_id INTEGER PRIMARY KEY AUTOINCREMENT,
             med_id INTEGER,
             consumption_start TEXT,
             consumption_end TEXT,
@@ -74,6 +75,7 @@ def init_db():
         # Inventory table
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS inventory (
+            inventory_id INTEGER PRIMARY KEY AUTOINCREMENT,
             med_id INTEGER,
             quantity INTEGER,
             expiration TEXT,
@@ -2000,3 +2002,4 @@ class MedicineApp(App):
 
 if __name__ == "__main__":
     MedicineApp().run()
+    # haha 2003'rd line my birth year
