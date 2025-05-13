@@ -34,27 +34,6 @@ def init_db():
         name TEXT PRIMARY KEY
     )""")
 
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS patient_medicine_schedule (
-        patient_name TEXT,
-        medicine_name TEXT,
-        schedule TEXT,
-        frequency TEXT,
-        PRIMARY KEY (patient_name, medicine_name),
-        FOREIGN KEY (patient_name) REFERENCES patients(name),
-        FOREIGN KEY (medicine_name) REFERENCES medicines(name)
-    )""")
-
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS medicine_intake (
-        patient_name TEXT,
-        medicine_name TEXT,
-        intake_date TEXT,
-        PRIMARY KEY (patient_name, medicine_name, intake_date),
-        FOREIGN KEY (patient_name) REFERENCES patients(name),
-        FOREIGN KEY (medicine_name) REFERENCES medicines(name)
-    )""")
-
     if os.path.exists("MEDICINE_UPDate.csv"):
         with open("MEDICINE_UPDate.csv", newline="", encoding='utf-8-sig') as f:
             reader = csv.reader(f)
