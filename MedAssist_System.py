@@ -19,123 +19,159 @@ Window.size = (1600, 900)
 
 # ---------- Database setup ----------
 def init_db():
-    conn = sqlite3.connect("medassist.db")
-    cursor = conn.cursor()
+    try:
+        # Create database file if it doesn't exist
+        conn = sqlite3.connect("medassist.db")
+        cursor = conn.cursor()
 
-    # User table
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS user (
-        username TEXT PRIMARY KEY,
-        password TEXT NOT NULL
-    )""")
+        # Enable foreign key support
+        cursor.execute("PRAGMA foreign_keys = ON")
 
-    # Medicine info table with additional fields
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS med_info (
-        med_id INTEGER PRIMARY KEY AUTOINCREMENT,
-        med_name TEXT NOT NULL,
-        med_type TEXT,
-        dosage_form TEXT,
-        strength TEXT,
-        manufacturer TEXT,
-        indication TEXT,
-        classification TEXT
-    )""")
+        print("Creating database tables if they don't exist...")
 
-    # Create a table to track CSV import status
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS csv_import_status (
-        filename TEXT PRIMARY KEY,
-        last_modified INTEGER
-    )""")
+        # User table
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS user (
+            username TEXT PRIMARY KEY,
+            password TEXT NOT NULL
+        )""")
+        print("User table checked/created")
 
-    # Schedule table
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS schedule (
-        med_id INTEGER,
-        consumption_start TEXT,
-        consumption_end TEXT,
-        frequency TEXT,
-        FOREIGN KEY (med_id) REFERENCES med_info(med_id) ON DELETE CASCADE
-    )""")
+        # Medicine info table with additional fields
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS med_info (
+            med_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            med_name TEXT NOT NULL,
+            med_type TEXT,
+            dosage_form TEXT,
+            strength TEXT,
+            manufacturer TEXT,
+            indication TEXT,
+            classification TEXT
+        )""")
+        print("Medicine info table checked/created")
 
-    # Inventory table
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS inventory (
-        med_id INTEGER,
-        quantity INTEGER,
-        expiration TEXT,
-        FOREIGN KEY (med_id) REFERENCES med_info(med_id) ON DELETE CASCADE
-    )""")
+        # Create a table to track CSV import status
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS csv_import_status (
+            filename TEXT PRIMARY KEY,
+            last_modified INTEGER
+        )""")
+        print("CSV import status table checked/created")
 
-    # Import data from CSV if it exists and has been modified
-    csv_path = "MEDICINE_UPDate.csv"
-    if os.path.exists(csv_path):
-        current_mtime = int(os.path.getmtime(csv_path))
-        
-        # Check if CSV has been modified since last import
-        cursor.execute("SELECT last_modified FROM csv_import_status WHERE filename=?", (csv_path,))
-        last_import = cursor.fetchone()
-        
-        if not last_import or last_import[0] < current_mtime:
-            print(f"Importing updated CSV file: {csv_path}")
-            try:
-                # Clear existing medicine data before import
-                cursor.execute("DELETE FROM med_info")
-                
-                with open(csv_path, newline="", encoding='utf-8-sig') as f:
-                    reader = csv.reader(f)
-                    headers = next(reader, None)  # Skip header row
-                    print(f"CSV Headers: {headers}")
+        # Schedule table
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS schedule (
+            med_id INTEGER,
+            consumption_start TEXT,
+            consumption_end TEXT,
+            frequency TEXT,
+            FOREIGN KEY (med_id) REFERENCES med_info(med_id) ON DELETE CASCADE
+        )""")
+        print("Schedule table checked/created")
+
+        # Inventory table
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS inventory (
+            med_id INTEGER,
+            quantity INTEGER,
+            expiration TEXT,
+            FOREIGN KEY (med_id) REFERENCES med_info(med_id) ON DELETE CASCADE
+        )""")
+        print("Inventory table checked/created")
+
+        # Verify tables exist
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        tables = cursor.fetchall()
+        print("Existing tables:", [table[0] for table in tables])
+
+        # Import data from CSV if it exists and has been modified
+        csv_path = "MEDICINE_UPDate.csv"
+        if os.path.exists(csv_path):
+            current_mtime = int(os.path.getmtime(csv_path))
+            
+            # Check if CSV has been modified since last import
+            cursor.execute("SELECT last_modified FROM csv_import_status WHERE filename=?", (csv_path,))
+            last_import = cursor.fetchone()
+            
+            if not last_import or last_import[0] < current_mtime:
+                print(f"Importing updated CSV file: {csv_path}")
+                try:
+                    # Clear existing medicine data before import
+                    cursor.execute("DELETE FROM med_info")
                     
-                    for row in reader:
-                        if row:
-                            # Pad row with None values if it's shorter than expected
-                            row += [None] * (7 - len(row))
-                            try:
-                                cursor.execute("""
-                                INSERT INTO med_info 
-                                (med_name, med_type, dosage_form, strength, manufacturer, indication, classification)
-                                VALUES (?, ?, ?, ?, ?, ?, ?)
-                                """, (row[0], row[1], row[2], row[3], row[4], row[5], row[6]))
-                            except sqlite3.Error as e:
-                                print(f"Error importing medicine row {row}: {e}")
-                
-                # Update the import status
-                cursor.execute("""
-                    INSERT OR REPLACE INTO csv_import_status (filename, last_modified)
-                    VALUES (?, ?)
-                """, (csv_path, current_mtime))
-                
-                print("CSV import completed successfully")
-            except Exception as e:
-                print(f"Error during CSV import: {e}")
+                    with open(csv_path, newline="", encoding='utf-8-sig') as f:
+                        reader = csv.reader(f)
+                        headers = next(reader, None)  # Skip header row
+                        print(f"CSV Headers: {headers}")
+                        
+                        for row in reader:
+                            if row:
+                                # Pad row with None values if it's shorter than expected
+                                row += [None] * (7 - len(row))
+                                try:
+                                    cursor.execute("""
+                                    INSERT INTO med_info 
+                                    (med_name, med_type, dosage_form, strength, manufacturer, indication, classification)
+                                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                                    """, (row[0], row[1], row[2], row[3], row[4], row[5], row[6]))
+                                except sqlite3.Error as e:
+                                    print(f"Error importing medicine row {row}: {e}")
+                    
+                    # Update the import status
+                    cursor.execute("""
+                        INSERT OR REPLACE INTO csv_import_status (filename, last_modified)
+                        VALUES (?, ?)
+                    """, (csv_path, current_mtime))
+                    
+                    print("CSV import completed successfully")
+                except Exception as e:
+                    print(f"Error during CSV import: {e}")
+            else:
+                print("CSV file unchanged since last import, skipping...")
         else:
-            print("CSV file unchanged since last import, skipping...")
+            print(f"CSV file not found at: {csv_path}")
 
-    conn.commit()
-    conn.close()
-
-
-def check_csv_file():
-    csv_path = "MEDICINE_UPDate.csv"
-    if os.path.exists(csv_path):
-        print("\nChecking CSV file contents:")
+        conn.commit()
+        print("Database initialization completed successfully")
+        
+    except sqlite3.Error as e:
+        print(f"SQLite error during database initialization: {e}")
+        # Attempt to create tables individually if there was an error
         try:
-            with open(csv_path, 'r', encoding='utf-8-sig') as f:
-                print("First few lines of the CSV file:")
-                for i, line in enumerate(f):
-                    if i < 5:  # Print first 5 lines
-                        print(f"Line {i+1}: {line.strip()}")
-                    else:
-                        break
+            for table_name in ["user", "med_info", "schedule", "inventory"]:
+                cursor.execute(f"SELECT 1 FROM {table_name} LIMIT 1")
+                print(f"Table {table_name} exists and is accessible")
+        except sqlite3.Error as table_error:
+            print(f"Error checking table {table_name}: {table_error}")
+    except Exception as e:
+        print(f"Unexpected error during database initialization: {e}")
+    finally:
+        try:
+            conn.close()
+            print("Database connection closed")
         except Exception as e:
-            print(f"Error reading CSV file: {e}")
-    else:
-        print(f"\nCSV file not found at: {csv_path}")
-        print("Current working directory:", os.getcwd())
-        print("Files in current directory:", os.listdir())
+            print(f"Error closing database connection: {e}")
 
+# Function to check database integrity
+def check_database():
+    try:
+        conn = sqlite3.connect("medassist.db")
+        cursor = conn.cursor()
+        
+        # Check all tables
+        tables = ["user", "med_info", "schedule", "inventory", "csv_import_status"]
+        for table in tables:
+            try:
+                cursor.execute(f"SELECT COUNT(*) FROM {table}")
+                count = cursor.fetchone()[0]
+                print(f"Table {table} exists and contains {count} records")
+            except sqlite3.Error as e:
+                print(f"Error checking table {table}: {e}")
+        
+        conn.close()
+    except Exception as e:
+        print(f"Error checking database: {e}")
 
 class LoginScreen(Screen):
     def __init__(self, **kwargs):
@@ -1003,9 +1039,10 @@ class MedicineScreen(Screen):
 
 class MedicineApp(App):
     def build(self):
+        # Initialize and check database
         init_db()
-        # clear_all_data() # DEV ONLY FEATURE
-
+        check_database()
+        
         self.conn = sqlite3.connect("medassist.db")
         self.cursor = self.conn.cursor()
         self.username = None
