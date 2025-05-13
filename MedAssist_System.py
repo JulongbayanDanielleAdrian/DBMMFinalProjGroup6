@@ -13,6 +13,7 @@ from kivy.uix.scrollview import ScrollView
 from datetime import datetime
 from kivy.graphics import Color, Rectangle
 from kivy.core.window import Window
+from kivy.uix.widget import Widget
 
 # Set default window size
 Window.size = (1600, 900)
@@ -89,22 +90,22 @@ def init_db():
         csv_path = "MEDICINE_UPDate.csv"
         if os.path.exists(csv_path):
             current_mtime = int(os.path.getmtime(csv_path))
-            
+
             # Check if CSV has been modified since last import
             cursor.execute("SELECT last_modified FROM csv_import_status WHERE filename=?", (csv_path,))
             last_import = cursor.fetchone()
-            
+
             if not last_import or last_import[0] < current_mtime:
                 print(f"Importing updated CSV file: {csv_path}")
                 try:
                     # Clear existing medicine data before import
                     cursor.execute("DELETE FROM med_info")
-                    
+
                     with open(csv_path, newline="", encoding='utf-8-sig') as f:
                         reader = csv.reader(f)
                         headers = next(reader, None)  # Skip header row
                         print(f"CSV Headers: {headers}")
-                        
+
                         for row in reader:
                             if row:
                                 # Pad row with None values if it's shorter than expected
@@ -117,13 +118,13 @@ def init_db():
                                     """, (row[0], row[1], row[2], row[3], row[4], row[5], row[6]))
                                 except sqlite3.Error as e:
                                     print(f"Error importing medicine row {row}: {e}")
-                    
+
                     # Update the import status
                     cursor.execute("""
                         INSERT OR REPLACE INTO csv_import_status (filename, last_modified)
                         VALUES (?, ?)
                     """, (csv_path, current_mtime))
-                    
+
                     print("CSV import completed successfully")
                 except Exception as e:
                     print(f"Error during CSV import: {e}")
@@ -134,7 +135,7 @@ def init_db():
 
         conn.commit()
         print("Database initialization completed successfully")
-        
+
     except sqlite3.Error as e:
         print(f"SQLite error during database initialization: {e}")
         # Attempt to create tables individually if there was an error
@@ -158,7 +159,7 @@ def check_database():
     try:
         conn = sqlite3.connect("medassist.db")
         cursor = conn.cursor()
-        
+
         # Check all tables
         tables = ["user", "med_info", "schedule", "inventory", "csv_import_status"]
         for table in tables:
@@ -168,7 +169,7 @@ def check_database():
                 print(f"Table {table} exists and contains {count} records")
             except sqlite3.Error as e:
                 print(f"Error checking table {table}: {e}")
-        
+
         conn.close()
     except Exception as e:
         print(f"Error checking database: {e}")
@@ -198,7 +199,7 @@ class LoginScreen(Screen):
         self.add_widget(layout)
 
     def login(self, instance):
-        conn = sqlite3.connect("medicine_db.db")
+        conn = sqlite3.connect("medassist.db")
         cursor = conn.cursor()
         username = self.username.text.strip()
         password = self.password.text.strip()
@@ -210,7 +211,7 @@ class LoginScreen(Screen):
         conn.close()
 
     def register(self, instance):
-        conn = sqlite3.connect("medicine_db.db")
+        conn = sqlite3.connect("medassist.db")
         cursor = conn.cursor()
         username = self.username.text.strip()
         password = self.password.text.strip()
@@ -227,7 +228,7 @@ class DashboardScreen(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         layout = BoxLayout(orientation="vertical", spacing=20, padding=30)
-        
+
         # Header
         header = Label(
             text="Medicine Management Dashboard",
@@ -236,7 +237,7 @@ class DashboardScreen(Screen):
             size_hint_y=0.2
         )
         layout.add_widget(header)
-        
+
         # Welcome message
         self.welcome_label = Label(
             text="Welcome!",
@@ -386,7 +387,7 @@ class MedicineInfoScreen(BaseCrudScreen):
 
     def refresh_list(self):
         self.list_content.clear_widgets()
-        conn = sqlite3.connect("medicine_db.db")
+        conn = sqlite3.connect("medassist.db")
         cursor = conn.cursor()
         cursor.execute("""
             SELECT med_id, med_name, med_type 
@@ -410,7 +411,7 @@ class MedicineInfoScreen(BaseCrudScreen):
         med_type = self.med_type.text.strip()
 
         if name and med_type:
-            conn = sqlite3.connect("medicine_db.db")
+            conn = sqlite3.connect("medassist.db")
             cursor = conn.cursor()
             cursor.execute("INSERT INTO med_info (med_name, med_type) VALUES (?, ?)",
                            (name, med_type))
@@ -428,7 +429,7 @@ class MedicineInfoScreen(BaseCrudScreen):
             med_type = self.med_type.text.strip()
 
             if all([med_id, name, med_type]):
-                conn = sqlite3.connect("medicine_db.db")
+                conn = sqlite3.connect("medassist.db")
                 cursor = conn.cursor()
 
                 # Check if medicine exists
@@ -454,7 +455,7 @@ class MedicineInfoScreen(BaseCrudScreen):
         try:
             med_id = int(self.med_id.text.strip())
 
-            conn = sqlite3.connect("medicine_db.db")
+            conn = sqlite3.connect("medassist.db")
             cursor = conn.cursor()
 
             # Check if medicine exists
@@ -506,10 +507,10 @@ class ScheduleScreen(BaseCrudScreen):
 
     def refresh_list(self):
         self.list_content.clear_widgets()
-        conn = sqlite3.connect("medicine_db.db")
+        conn = sqlite3.connect("medassist.db")
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT s.schedule_id, m.med_name, s.consumption_start, s.consumption_end, s.frequency 
+            SELECT s.med_id, m.med_name, s.consumption_start, s.consumption_end, s.frequency 
             FROM schedule s 
             JOIN med_info m ON s.med_id = m.med_id
             ORDER BY s.consumption_start
@@ -534,7 +535,7 @@ class ScheduleScreen(BaseCrudScreen):
             frequency = self.frequency.text.strip()
 
             if all([med_id, start_date, end_date, frequency]):
-                conn = sqlite3.connect("medicine_db.db")
+                conn = sqlite3.connect("medassist.db")
                 cursor = conn.cursor()
                 cursor.execute("""
                     INSERT INTO schedule (med_id, consumption_start, consumption_end, frequency) 
@@ -579,10 +580,10 @@ class InventoryScreen(BaseCrudScreen):
 
     def refresh_list(self):
         self.list_content.clear_widgets()
-        conn = sqlite3.connect("medicine_db.db")
+        conn = sqlite3.connect("medassist.db")
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT i.inventory_id, m.med_name, i.quantity, i.expiration 
+            SELECT i.med_id, m.med_name, i.quantity, i.expiration 
             FROM inventory i 
             JOIN med_info m ON i.med_id = m.med_id
             ORDER BY i.expiration
@@ -606,7 +607,7 @@ class InventoryScreen(BaseCrudScreen):
             expiration = datetime.strptime(self.expiration.text.strip(), "%Y-%m-%d").date()
 
             if all([med_id, quantity, expiration]):
-                conn = sqlite3.connect("medicine_db.db")
+                conn = sqlite3.connect("medassist.db")
                 cursor = conn.cursor()
                 cursor.execute("""
                     INSERT INTO inventory (med_id, quantity, expiration) 
@@ -629,16 +630,33 @@ class MedicineScreen(Screen):
         self.page = 1
         self.items_per_page = 10
         self.total_items = 0
+        self.search_query = ""
         
-        # Create input fields first
-        self.name_input = TextInput(hint_text="Enter name", multiline=False)
-        self.type_input = TextInput(hint_text="Enter type", multiline=False)
-        self.dosage_form_input = TextInput(hint_text="Enter form", multiline=False)
-        self.strength_input = TextInput(hint_text="Enter strength", multiline=False)
-        self.manufacturer_input = TextInput(hint_text="Enter manufacturer", multiline=False)
-        self.indication_input = TextInput(hint_text="Enter indication", multiline=False)
-        self.classification_input = TextInput(hint_text="Enter classification", multiline=False)
+        # Create input fields for adding medicine
+        self.name_input = TextInput(hint_text="Enter name (required)", multiline=False)
+        self.type_input = TextInput(hint_text="Enter type (required)", multiline=False)
+        self.dosage_form_input = TextInput(hint_text="Enter form (optional)", multiline=False)
+        self.strength_input = TextInput(hint_text="Enter strength (optional)", multiline=False)
+        self.manufacturer_input = TextInput(hint_text="Enter manufacturer (optional)", multiline=False)
+        self.indication_input = TextInput(hint_text="Enter indication (optional)", multiline=False)
+        self.classification_input = TextInput(hint_text="Enter classification (optional)", multiline=False)
         
+        # Create field for deleting medicine
+        self.med_id_input = TextInput(
+            hint_text="Enter Medicine ID to delete",
+            multiline=False,
+            size_hint_y=None,
+            height=40
+        )
+        
+        # Add status label for error messages
+        self.status_label = Label(
+            text="",
+            color=(1, 0, 0, 1),  # Red for errors
+            size_hint_y=None,
+            height=30
+        )
+
         layout = BoxLayout(orientation="vertical", padding=15, spacing=10)
 
         # Header
@@ -664,7 +682,45 @@ class MedicineScreen(Screen):
             Color(0.95, 0.95, 0.95, 1)  # Light gray background
             self.data_layout.rect = Rectangle(pos=self.data_layout.pos, size=self.data_layout.size)
         self.data_layout.bind(pos=self._update_rect, size=self._update_rect)
+
+        # Add search box and button at the top
+        search_layout = BoxLayout(
+            orientation="horizontal",
+            size_hint_y=None,
+            height=40,
+            spacing=10,
+            padding=[0, 5]
+        )
         
+        self.search_input = TextInput(
+            hint_text="Search medicines...",
+            multiline=False,
+            size_hint=(0.7, None),
+            height=40
+        )
+        self.search_input.bind(text=self.on_search_text)
+        
+        search_btn = Button(
+            text="Search",
+            size_hint=(0.15, None),
+            height=40,
+            background_color=(0.3, 0.5, 0.9, 1)  # Blue
+        )
+        search_btn.bind(on_press=self.on_search)
+        
+        clear_btn = Button(
+            text="Clear",
+            size_hint=(0.15, None),
+            height=40,
+            background_color=(0.7, 0.7, 0.7, 1)  # Gray
+        )
+        clear_btn.bind(on_press=self.clear_search)
+        
+        search_layout.add_widget(self.search_input)
+        search_layout.add_widget(search_btn)
+        search_layout.add_widget(clear_btn)
+        self.data_layout.add_widget(search_layout)
+
         # Add pagination controls at the top
         pagination_layout = BoxLayout(
             orientation="horizontal",
@@ -699,7 +755,7 @@ class MedicineScreen(Screen):
         pagination_layout.add_widget(self.page_label)
         pagination_layout.add_widget(self.next_btn)
         self.data_layout.add_widget(pagination_layout)
-        
+
         # Create table header
         header_layout = GridLayout(
             cols=5,
@@ -735,7 +791,7 @@ class MedicineScreen(Screen):
         self.scroll_view.add_widget(self.list_layout)
         self.data_layout.add_widget(self.scroll_view)
 
-        # Controls layout
+        # Controls layout with sections
         controls_layout = BoxLayout(
             orientation="vertical",
             size_hint=(0.3, 1),
@@ -746,6 +802,16 @@ class MedicineScreen(Screen):
             Color(0.9, 0.9, 0.9, 1)  # Light gray background
             controls_layout.rect = Rectangle(pos=controls_layout.pos, size=controls_layout.size)
         controls_layout.bind(pos=self._update_rect, size=self._update_rect)
+
+        # Add Medicine Section
+        add_section = BoxLayout(orientation='vertical', spacing=5, size_hint_y=None)
+        add_section.add_widget(Label(
+            text="Add New Medicine",
+            bold=True,
+            size_hint_y=None,
+            height=30,
+            color=(0, 0.6, 0, 1)  # Green
+        ))
 
         # Input fields with labels
         input_fields = [
@@ -767,35 +833,51 @@ class MedicineScreen(Screen):
                 color=(0.2, 0.2, 0.2, 1)  # Dark gray
             ))
             field_layout.add_widget(input_widget)
-            controls_layout.add_widget(field_layout)
+            add_section.add_widget(field_layout)
 
-        # Create buttons
-        refresh_btn = Button(
-            text="Refresh",
-            background_color=(0.3, 0.5, 0.9, 1)  # Blue
-        )
         add_btn = Button(
             text="Add Medicine",
-            background_color=(0, 0.7, 0, 1)  # Green
+            background_color=(0, 0.7, 0, 1),  # Green
+            size_hint_y=None,
+            height=40
         )
+        add_btn.bind(on_press=self.add_medicine)
+        add_section.add_widget(add_btn)
+        
+        # Delete Medicine Section
+        delete_section = BoxLayout(orientation='vertical', spacing=5, size_hint_y=None, height=120)
+        delete_section.add_widget(Label(
+            text="Delete Medicine",
+            bold=True,
+            size_hint_y=None,
+            height=30,
+            color=(0.8, 0, 0, 1)  # Red
+        ))
+        delete_section.add_widget(self.med_id_input)
         delete_btn = Button(
             text="Delete Medicine",
-            background_color=(0.8, 0.2, 0.2, 1)  # Red
+            background_color=(0.8, 0.2, 0.2, 1),  # Red
+            size_hint_y=None,
+            height=40
         )
+        delete_btn.bind(on_press=self.delete_medicine)
+        delete_section.add_widget(delete_btn)
+
+        # Add sections to controls layout
+        controls_layout.add_widget(add_section)
+        controls_layout.add_widget(Widget(size_hint_y=None, height=20))  # Spacer
+        controls_layout.add_widget(delete_section)
+        controls_layout.add_widget(self.status_label)
+        
+        # Back to Dashboard button at the bottom
         back_btn = Button(
             text="Back to Dashboard",
-            background_color=(0.5, 0.5, 0.5, 1)  # Gray
+            background_color=(0.5, 0.5, 0.5, 1),  # Gray
+            size_hint_y=None,
+            height=40
         )
-
-        # Bind button events
-        refresh_btn.bind(on_press=self.refresh_medicines)
-        add_btn.bind(on_press=self.add_medicine)
-        delete_btn.bind(on_press=self.delete_medicine)
         back_btn.bind(on_press=lambda x: setattr(self.manager, "current", "dashboard"))
-
-        # Add buttons to controls
-        for btn in [refresh_btn, add_btn, delete_btn, back_btn]:
-            controls_layout.add_widget(btn)
+        controls_layout.add_widget(back_btn)
 
         # Add layouts to main layout
         main_layout.add_widget(self.data_layout)
@@ -821,10 +903,42 @@ class MedicineScreen(Screen):
         self.prev_btn.disabled = self.page <= 1
         self.next_btn.disabled = self.page >= total_pages
 
+    def on_search_text(self, instance, value):
+        """Handle search input changes"""
+        self.search_query = value.strip()
+        self.page = 1  # Reset to first page when search changes
+        self.refresh_medicines()
+
+    def on_search(self, instance):
+        """Handle search button press"""
+        self.page = 1  # Reset to first page when searching
+        self.refresh_medicines()
+
+    def clear_search(self, instance):
+        """Clear search and reset display"""
+        self.search_input.text = ""
+        self.search_query = ""
+        self.page = 1
+        self.refresh_medicines()
+
     def get_total_items(self):
         app = App.get_running_app()
         try:
-            app.cursor.execute("SELECT COUNT(*) FROM med_info")
+            query = "SELECT COUNT(*) FROM med_info"
+            params = []
+            
+            if self.search_query:
+                query = """
+                    SELECT COUNT(*) FROM med_info 
+                    WHERE med_name LIKE ? OR med_type LIKE ? OR 
+                          dosage_form LIKE ? OR strength LIKE ? OR 
+                          manufacturer LIKE ? OR indication LIKE ? OR 
+                          classification LIKE ?
+                """
+                search_param = f"%{self.search_query}%"
+                params = [search_param] * 7
+            
+            app.cursor.execute(query, params)
             return app.cursor.fetchone()[0]
         except sqlite3.Error:
             return 0
@@ -838,14 +952,30 @@ class MedicineScreen(Screen):
             # Calculate offset for current page
             offset = (self.page - 1) * self.items_per_page
             
-            app.cursor.execute("""
+            # Base query
+            query = """
                 SELECT med_id, med_name, med_type, dosage_form, strength, 
                        manufacturer, indication, classification 
                 FROM med_info
-                ORDER BY med_name
-                LIMIT ? OFFSET ?
-            """, (self.items_per_page, offset))
-
+            """
+            params = []
+            
+            # Add search condition if there's a search query
+            if self.search_query:
+                query += """
+                    WHERE med_name LIKE ? OR med_type LIKE ? OR 
+                          dosage_form LIKE ? OR strength LIKE ? OR 
+                          manufacturer LIKE ? OR indication LIKE ? OR 
+                          classification LIKE ?
+                """
+                search_param = f"%{self.search_query}%"
+                params = [search_param] * 7
+            
+            # Add ordering and pagination
+            query += " ORDER BY med_name LIMIT ? OFFSET ?"
+            params.extend([self.items_per_page, offset])
+            
+            app.cursor.execute(query, params)
             medicines = app.cursor.fetchall()
             
             # Clear previous content
@@ -855,7 +985,7 @@ class MedicineScreen(Screen):
                 # Add a "No medicines found" message spanning all columns
                 self.list_layout.add_widget(
                     Label(
-                        text="No medicines found",
+                        text="No medicines found" if self.search_query else "No medicines in database",
                         size_hint_y=None,
                         height=40,
                         color=(0, 0, 0, 1)  # Black text
@@ -868,15 +998,15 @@ class MedicineScreen(Screen):
                 # Column 1: ID and Name
                 self.list_layout.add_widget(
                     Label(
-                        text=f"ID: {med[0]}\n{med[1]}", 
-                        size_hint_y=None, 
+                        text=f"ID: {med[0]}\n{med[1]}",
+                        size_hint_y=None,
                         height=60,
                         text_size=(None, None),
                         halign='left',
                         color=(0, 0, 0, 1)  # Black text
                     )
                 )
-                
+
                 # Column 2: Type and Form
                 type_form = f"Type: {med[2] or 'N/A'}"
                 if med[3]:  # dosage_form
@@ -891,7 +1021,7 @@ class MedicineScreen(Screen):
                         color=(0, 0, 0, 1)  # Black text
                     )
                 )
-                
+
                 # Column 3: Strength
                 self.list_layout.add_widget(
                     Label(
@@ -903,7 +1033,7 @@ class MedicineScreen(Screen):
                         color=(0, 0, 0, 1)  # Black text
                     )
                 )
-                
+
                 # Column 4: Manufacturer
                 self.list_layout.add_widget(
                     Label(
@@ -915,7 +1045,7 @@ class MedicineScreen(Screen):
                         color=(0, 0, 0, 1)  # Black text
                     )
                 )
-                
+
                 # Column 5: Indication and Classification
                 ind_class = f"Ind: {med[6] or 'N/A'}"
                 if med[7]:  # classification
@@ -930,17 +1060,17 @@ class MedicineScreen(Screen):
                         color=(0, 0, 0, 1)  # Black text
                     )
                 )
-            
+
             # Update pagination controls
             self.update_pagination_controls()
-                
+
         except sqlite3.Error as e:
             print(f"Database error: {e}")
             self.list_layout.clear_widgets()
             self.list_layout.add_widget(
                 Label(
-                    text=f"Error loading medicines: {str(e)}", 
-                    size_hint_y=None, 
+                    text=f"Error loading medicines: {str(e)}",
+                    size_hint_y=None,
                     height=40,
                     color=(0, 0, 0, 1)  # Black text
                 )
@@ -950,8 +1080,8 @@ class MedicineScreen(Screen):
             self.list_layout.clear_widgets()
             self.list_layout.add_widget(
                 Label(
-                    text=f"Unexpected error: {str(e)}", 
-                    size_hint_y=None, 
+                    text=f"Unexpected error: {str(e)}",
+                    size_hint_y=None,
                     height=40,
                     color=(0, 0, 0, 1)  # Black text
                 )
@@ -961,38 +1091,94 @@ class MedicineScreen(Screen):
         self.page = 1  # Reset to first page when entering the screen
         self.refresh_medicines()
 
+    def show_error(self, message):
+        """Display error message to user"""
+        self.status_label.text = message
+        self.status_label.color = (1, 0, 0, 1)  # Red for errors
+        
+    def show_success(self, message):
+        """Display success message to user"""
+        self.status_label.text = message
+        self.status_label.color = (0, 0.8, 0, 1)  # Green for success
+
+    def validate_inputs(self, operation="add"):
+        """Validate input fields based on operation type"""
+        errors = []
+        
+        if operation == "add":
+            # Required fields
+            if not self.name_input.text.strip():
+                errors.append("Medicine name is required")
+            if not self.type_input.text.strip():
+                errors.append("Medicine type is required")
+                
+            # Length validations
+            if len(self.name_input.text) > 100:
+                errors.append("Medicine name must be less than 100 characters")
+            if len(self.type_input.text) > 50:
+                errors.append("Medicine type must be less than 50 characters")
+                
+            # Optional field validations
+            if self.strength_input.text.strip():
+                # Check if strength contains valid numeric characters and units
+                strength = self.strength_input.text.strip()
+                if not any(char.isdigit() for char in strength):
+                    errors.append("Strength must contain at least one number")
+                    
+            if self.dosage_form_input.text.strip() and len(self.dosage_form_input.text) > 50:
+                errors.append("Dosage form must be less than 50 characters")
+                
+        elif operation == "delete":
+            # Validate medicine ID
+            try:
+                med_id = self.med_id_input.text.strip()  # Use med_id_input instead of name_input
+                if not med_id:
+                    errors.append("Medicine ID is required for deletion")
+                elif not med_id.isdigit():
+                    errors.append("Medicine ID must be a number")
+            except ValueError:
+                errors.append("Invalid Medicine ID format")
+                
+        return errors
+
     def add_medicine(self, instance):
-        app = App.get_running_app()
-        name = self.name_input.text.strip()
-        med_type = self.type_input.text.strip()
-        dosage_form = self.dosage_form_input.text.strip() or None
-        strength = self.strength_input.text.strip() or None
-        manufacturer = self.manufacturer_input.text.strip() or None
-        indication = self.indication_input.text.strip() or None
-        classification = self.classification_input.text.strip() or None
-
-        if not name:
-            self.list_layout.clear_widgets()
-            self.list_layout.add_widget(
-                Label(
-                    text="Medicine name is required!", 
-                    size_hint_y=None, 
-                    height=40
-                )
-            )
-            return
-
         try:
-            app.cursor.execute("""
-                INSERT INTO med_info (med_name, med_type, dosage_form, strength, 
-                                    manufacturer, indication, classification)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (name, med_type, dosage_form, strength, manufacturer,
-                  indication, classification))
-            app.conn.commit()
-            self.refresh_medicines()
+            # Clear previous status
+            self.show_error("")
+            
+            # Validate inputs
+            errors = self.validate_inputs("add")
+            if errors:
+                self.show_error("\n".join(errors))
+                return
+                
+            name = self.name_input.text.strip()
+            med_type = self.type_input.text.strip()
+            dosage_form = self.dosage_form_input.text.strip() or None
+            strength = self.strength_input.text.strip() or None
+            manufacturer = self.manufacturer_input.text.strip() or None
+            indication = self.indication_input.text.strip() or None
+            classification = self.classification_input.text.strip() or None
 
-            # Clear inputs
+            app = App.get_running_app()
+            
+            # Check if medicine with same name already exists
+            app.cursor.execute("SELECT med_id FROM med_info WHERE med_name = ?", (name,))
+            if app.cursor.fetchone():
+                self.show_error(f"Medicine with name '{name}' already exists")
+                return
+
+            # Insert new medicine
+            app.cursor.execute("""
+                INSERT INTO med_info (
+                    med_name, med_type, dosage_form, strength,
+                    manufacturer, indication, classification
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (name, med_type, dosage_form, strength,
+                  manufacturer, indication, classification))
+            app.conn.commit()
+
+            # Clear inputs on success
             for input_field in [
                 self.name_input, self.type_input, self.dosage_form_input,
                 self.strength_input, self.manufacturer_input,
@@ -1000,41 +1186,70 @@ class MedicineScreen(Screen):
             ]:
                 input_field.text = ""
 
+            self.show_success(f"Successfully added medicine: {name}")
+            self.refresh_medicines()
+
+        except sqlite3.IntegrityError as e:
+            self.show_error(f"Database error: Medicine could not be added (duplicate entry)")
         except sqlite3.Error as e:
-            self.list_layout.clear_widgets()
-            self.list_layout.add_widget(
-                Label(
-                    text=f"Error adding medicine: {str(e)}", 
-                    size_hint_y=None, 
-                    height=40
-                )
-            )
+            self.show_error(f"Database error: {str(e)}")
+        except Exception as e:
+            self.show_error(f"Unexpected error: {str(e)}")
 
     def delete_medicine(self, instance):
-        app = App.get_running_app()
         try:
-            med_id = int(self.name_input.text.strip())
+            # Clear previous status
+            self.show_error("")
+            
+            # Validate inputs
+            errors = self.validate_inputs("delete")
+            if errors:
+                self.show_error("\n".join(errors))
+                return
 
-            app.cursor.execute("SELECT med_id FROM med_info WHERE med_id = ?", (med_id,))
-            if app.cursor.fetchone():
-                # Delete related records in schedule and inventory tables
-                app.cursor.execute("DELETE FROM schedule WHERE med_id = ?", (med_id,))
-                app.cursor.execute("DELETE FROM inventory WHERE med_id = ?", (med_id,))
-                # Delete the medicine
-                app.cursor.execute("DELETE FROM med_info WHERE med_id = ?", (med_id,))
-                app.conn.commit()
-                self.name_input.text = ""
-                self.type_input.text = ""
-                self.dosage_form_input.text = ""
-                self.strength_input.text = ""
-                self.manufacturer_input.text = ""
-                self.indication_input.text = ""
-                self.classification_input.text = ""
-                self.refresh_medicines()
-            else:
-                print(f"Medicine with ID {med_id} not found")
-        except (ValueError, sqlite3.Error) as e:
-            print(f"Error deleting medicine: {e}")
+            med_id = self.med_id_input.text.strip()  # Use med_id_input instead of name_input
+
+            app = App.get_running_app()
+            
+            # Check if medicine exists and get its name
+            app.cursor.execute("SELECT med_name FROM med_info WHERE med_id = ?", (med_id,))
+            result = app.cursor.fetchone()
+            if not result:
+                self.show_error(f"Medicine with ID {med_id} not found")
+                return
+                
+            med_name = result[0]
+
+            # Check if medicine is referenced in schedules or inventory
+            app.cursor.execute("SELECT COUNT(*) FROM schedule WHERE med_id = ?", (med_id,))
+            schedule_count = app.cursor.fetchone()[0]
+            
+            app.cursor.execute("SELECT COUNT(*) FROM inventory WHERE med_id = ?", (med_id,))
+            inventory_count = app.cursor.fetchone()[0]
+            
+            if schedule_count > 0 or inventory_count > 0:
+                warning = f"Warning: This medicine has {schedule_count} schedule(s) and {inventory_count} inventory record(s).\n"
+                warning += "These related records will also be deleted.\nProceeding with deletion..."
+                self.show_error(warning)
+                
+            # Delete the medicine and related records
+            app.cursor.execute("DELETE FROM schedule WHERE med_id = ?", (med_id,))
+            app.cursor.execute("DELETE FROM inventory WHERE med_id = ?", (med_id,))
+            app.cursor.execute("DELETE FROM med_info WHERE med_id = ?", (med_id,))
+            app.conn.commit()
+
+            # Clear inputs
+            self.med_id_input.text = ""  # Clear only the med_id_input
+            
+            self.show_success(f"Successfully deleted medicine: {med_name}")
+            self.refresh_medicines()
+
+        except sqlite3.Error as e:
+            self.show_error(f"Database error: {str(e)}")
+        except ValueError as e:
+            self.show_error(f"Invalid input: {str(e)}")
+        except Exception as e:
+            self.show_error(f"Unexpected error: {str(e)}")
 
 
 class MedicineApp(App):
@@ -1042,7 +1257,7 @@ class MedicineApp(App):
         # Initialize and check database
         init_db()
         check_database()
-        
+
         self.conn = sqlite3.connect("medassist.db")
         self.cursor = self.conn.cursor()
         self.username = None
