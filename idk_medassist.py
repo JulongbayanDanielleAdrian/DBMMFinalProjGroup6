@@ -20,8 +20,7 @@ def init_db():
 
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS medicines (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT,
+        name TEXT PRIMARY KEY,
         category TEXT,
         dosage_form TEXT,
         strength TEXT,
@@ -30,7 +29,31 @@ def init_db():
         classification TEXT
     )""")
 
-    cursor.execute("CREATE TABLE IF NOT EXISTS patients (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT)")
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS patients (
+        name TEXT PRIMARY KEY
+    )""")
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS patient_medicine_schedule (
+        patient_name TEXT,
+        medicine_name TEXT,
+        schedule TEXT,
+        frequency TEXT,
+        PRIMARY KEY (patient_name, medicine_name),
+        FOREIGN KEY (patient_name) REFERENCES patients(name),
+        FOREIGN KEY (medicine_name) REFERENCES medicines(name)
+    )""")
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS medicine_intake (
+        patient_name TEXT,
+        medicine_name TEXT,
+        intake_date TEXT,
+        PRIMARY KEY (patient_name, medicine_name, intake_date),
+        FOREIGN KEY (patient_name) REFERENCES patients(name),
+        FOREIGN KEY (medicine_name) REFERENCES medicines(name)
+    )""")
 
     if os.path.exists("MEDICINE_UPDate.csv"):
         with open("MEDICINE_UPDate.csv", newline="", encoding='utf-8-sig') as f:
@@ -77,30 +100,36 @@ def add_item(table, name):
 def get_items(table):
     conn = sqlite3.connect("medassist.db")
     cursor = conn.cursor()
-    cursor.execute(f"SELECT id, name FROM {table} LIMIT 100")
+    if table == "medicines":
+        cursor.execute("SELECT name, category, dosage_form, strength, manufacturer FROM medicines LIMIT 100")
+    else:
+        cursor.execute(f"SELECT name FROM {table} LIMIT 100")
     items = cursor.fetchall()
     conn.close()
     return items
 
-def get_item_by_id(table, item_id):
+def get_item_by_name(table, name):
     conn = sqlite3.connect("medassist.db")
     cursor = conn.cursor()
-    cursor.execute(f"SELECT id, name FROM {table} WHERE id=?", (item_id,))
+    if table == "medicines":
+        cursor.execute("SELECT name, category, dosage_form, strength, manufacturer FROM medicines WHERE name=?", (name,))
+    else:
+        cursor.execute(f"SELECT name FROM {table} WHERE name=?", (name,))
     item = cursor.fetchone()
     conn.close()
     return item
 
-def update_item(table, item_id, name):
+def update_item(table, old_name, new_name):
     conn = sqlite3.connect("medassist.db")
     cursor = conn.cursor()
-    cursor.execute(f"UPDATE {table} SET name=? WHERE id=?", (name, item_id))
+    cursor.execute(f"UPDATE {table} SET name=? WHERE name=?", (new_name, old_name))
     conn.commit()
     conn.close()
 
-def delete_item(table, item_id):
+def delete_item(table, name):
     conn = sqlite3.connect("medassist.db")
     cursor = conn.cursor()
-    cursor.execute(f"DELETE FROM {table} WHERE id=?", (item_id,))
+    cursor.execute(f"DELETE FROM {table} WHERE name=?", (name,))
     conn.commit()
     conn.close()
 
@@ -159,6 +188,7 @@ class DashboardScreen(Screen):
         self.label = Label(text="Welcome!", font_size=24)
         self.layout.add_widget(self.label)
         self.layout.add_widget(Button(text="Medicine", on_press=lambda x: setattr(self.manager, "current", "medicine")))
+
         self.layout.add_widget(Button(text="Patients", on_press=lambda x: setattr(self.manager, "current", "patients")))
         self.add_widget(self.layout)
 
@@ -179,14 +209,13 @@ class CrudScreen(Screen):
         self.data_layout.add_widget(self.scroll_view)
 
         controls_layout = BoxLayout(orientation="vertical", size_hint=(0.3, 1), spacing=10)
-        self.input_id = TextInput(hint_text="ID (for update/delete)", multiline=False)
         self.input_name = TextInput(hint_text=f"{table[:-1].capitalize()} Name", multiline=False)
 
         refresh_btn = Button(text="Refresh")
         refresh_btn.bind(on_press=self.load_items)
 
-        display_btn = Button(text="Display Selected ID")
-        display_btn.bind(on_press=self.display_selected_id)
+        display_btn = Button(text="Display Selected Name")
+        display_btn.bind(on_press=self.display_selected_name)
 
         add_btn = Button(text=f"Add {table[:-1].capitalize()}")
         add_btn.bind(on_press=self.add_item)
@@ -202,7 +231,6 @@ class CrudScreen(Screen):
 
         controls_layout.add_widget(refresh_btn)
         controls_layout.add_widget(display_btn)
-        controls_layout.add_widget(self.input_id)
         controls_layout.add_widget(self.input_name)
         controls_layout.add_widget(add_btn)
         controls_layout.add_widget(update_btn)
@@ -215,18 +243,15 @@ class CrudScreen(Screen):
 
     def load_items(self, instance):
         items = get_items(self.table)
-        self.display.text = f"{self.table.capitalize()} List:\n" + "\n".join(f"{i[0]}: {i[1]}" for i in items)
+        self.display.text = f"{self.table.capitalize()} List:\n" + "\n".join(f"{i[0]}" for i in items)
 
-    def display_selected_id(self, instance):
-        try:
-            item_id = int(self.input_id.text)
-            item = get_item_by_id(self.table, item_id)
-            if item:
-                self.display.text = f"Selected {self.table[:-1].capitalize()}:\n{item[0]}: {item[1]}"
-            else:
-                self.display.text = "Item not found."
-        except:
-            self.display.text = "Invalid ID."
+    def display_selected_name(self, instance):
+        name = self.input_name.text.strip()
+        item = get_item_by_name(self.table, name)
+        if item:
+            self.display.text = f"Selected {self.table[:-1].capitalize()}:\n{item[0]}"
+        else:
+            self.display.text = "Item not found."
 
     def add_item(self, instance):
         name = self.input_name.text.strip()
@@ -235,26 +260,21 @@ class CrudScreen(Screen):
             self.load_items(instance)
 
     def update_item(self, instance):
-        try:
-            item_id = int(self.input_id.text)
-            name = self.input_name.text.strip()
-            update_item(self.table, item_id, name)
+        name = self.input_name.text.strip()
+        new_name = self.input_name.text.strip()
+        if name and new_name:
+            update_item(self.table, name, new_name)
             self.load_items(instance)
-        except:
-            pass
 
     def delete_item(self, instance):
-        try:
-            item_id = int(self.input_id.text)
-            delete_item(self.table, item_id)
+        name = self.input_name.text.strip()
+        if name:
+            delete_item(self.table, name)
             self.load_items(instance)
-        except:
-            pass
 
 class MedAssistApp(App):
     def build(self):
         init_db()
-        # clear_all_data() DEVELOPER ONLY -- CLEARS ALL DATA IN DATABASE
         self.conn = sqlite3.connect("medassist.db")
         self.cursor = self.conn.cursor()
         self.username = ""
