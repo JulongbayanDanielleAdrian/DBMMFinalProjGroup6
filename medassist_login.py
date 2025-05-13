@@ -17,9 +17,9 @@ class LoginScreen(Screen):
         layout = GridLayout(cols=1, size_hint=(0.4, 0.6), pos_hint={"center_x": 0.5, "center_y": 0.5})
         self.add_widget(layout)
 
-        layout.add_widget(Image(source="MediShit.png"))
+        layout.add_widget(Image(source="MedAssist.png"))
 
-        self.greeting = Label(text="Welcome to MediSh*t!", font_size="25", color="#00a8f3")
+        self.greeting = Label(text="Welcome to MedAssist!", font_size="25", color="#00a8f3")
         layout.add_widget(self.greeting)
 
         self.username = TextInput(hint_text="Username", multiline=False, padding_y=(10, 10), size_hint=(1, 0.5))
@@ -99,7 +99,7 @@ class SuccessScreen(Screen):
         App.get_running_app().screen_manager.current = 'login'
 
 
-class MediShit(App):
+class MedAssist(App):
     def build(self):
         self.create_db()
 
@@ -126,4 +126,4 @@ class MediShit(App):
 
 
 if __name__ == "__main__":
-    MediShit().run()
+    MedAssist().run()
