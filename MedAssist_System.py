@@ -482,146 +482,709 @@ class ScheduleScreen(BaseCrudScreen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.title_label.text = "Medicine Schedule"
-
+        
         # Add input fields
-        self.med_id = TextInput(hint_text="Medicine ID", multiline=False)
+        self.med_id = TextInput(hint_text="Medicine ID (required)", multiline=False)
         self.start_date = TextInput(hint_text="Start Date (YYYY-MM-DD)", multiline=False)
         self.end_date = TextInput(hint_text="End Date (YYYY-MM-DD)", multiline=False)
         self.frequency = TextInput(hint_text="Frequency (e.g., 'Once daily')", multiline=False)
+        
+        # Add field for schedule ID (for update/delete)
+        self.schedule_id = TextInput(
+            hint_text="Schedule ID (for update/delete)",
+            multiline=False,
+            size_hint_y=None,
+            height=40
+        )
+        
+        # Add status label for messages
+        self.status_label = Label(
+            text="",
+            color=(1, 0, 0, 1),  # Red for errors
+            size_hint_y=None,
+            height=30
+        )
 
         # Add buttons
-        add_btn = Button(text="Add Schedule", background_color="#00a8f3")
+        add_btn = Button(
+            text="Add Schedule",
+            background_color=(0, 0.7, 0, 1),  # Green
+            size_hint_y=None,
+            height=40
+        )
         add_btn.bind(on_press=self.add_schedule)
-
-        refresh_btn = Button(text="Refresh List", background_color="#666666")
+        
+        load_btn = Button(
+            text="Load Schedule",
+            background_color=(0.3, 0.5, 0.9, 1),  # Light blue
+            size_hint_y=None,
+            height=40
+        )
+        load_btn.bind(on_press=self.load_schedule)
+        
+        update_btn = Button(
+            text="Update Schedule",
+            background_color=(0, 0.6, 1, 1),  # Blue
+            size_hint_y=None,
+            height=40
+        )
+        update_btn.bind(on_press=self.update_schedule)
+        
+        delete_btn = Button(
+            text="Delete Schedule",
+            background_color=(0.8, 0.2, 0.2, 1),  # Red
+            size_hint_y=None,
+            height=40
+        )
+        delete_btn.bind(on_press=self.delete_schedule)
+        
+        refresh_btn = Button(
+            text="Refresh List",
+            background_color=(0.5, 0.5, 0.5, 1),  # Gray
+            size_hint_y=None,
+            height=40
+        )
         refresh_btn.bind(on_press=lambda x: self.refresh_list())
-
+        
+        # Add fields and buttons to controls layout
+        self.controls_layout.add_widget(Label(
+            text="Add/Update Schedule",
+            bold=True,
+            size_hint_y=None,
+            height=30
+        ))
         self.controls_layout.add_widget(self.med_id)
         self.controls_layout.add_widget(self.start_date)
         self.controls_layout.add_widget(self.end_date)
         self.controls_layout.add_widget(self.frequency)
+        self.controls_layout.add_widget(Widget(size_hint_y=None, height=20))  # Spacer
+        
+        self.controls_layout.add_widget(Label(
+            text="Schedule ID for Update/Delete",
+            bold=True,
+            size_hint_y=None,
+            height=30
+        ))
+        self.controls_layout.add_widget(self.schedule_id)
+        self.controls_layout.add_widget(Widget(size_hint_y=None, height=10))  # Spacer
+        
         self.controls_layout.add_widget(add_btn)
+        self.controls_layout.add_widget(load_btn)
+        self.controls_layout.add_widget(update_btn)
+        self.controls_layout.add_widget(delete_btn)
         self.controls_layout.add_widget(refresh_btn)
+        self.controls_layout.add_widget(self.status_label)
 
-        self.refresh_list()
+    def show_error(self, message):
+        """Display error message"""
+        self.status_label.text = message
+        self.status_label.color = (1, 0, 0, 1)  # Red
+
+    def show_success(self, message):
+        """Display success message"""
+        self.status_label.text = message
+        self.status_label.color = (0, 0.8, 0, 1)  # Green
+
+    def validate_schedule(self):
+        """Validate schedule input fields"""
+        errors = []
+        
+        # Validate Medicine ID
+        if not self.med_id.text.strip():
+            errors.append("Medicine ID is required")
+        elif not self.med_id.text.strip().isdigit():
+            errors.append("Medicine ID must be a number")
+            
+        # Validate dates
+        try:
+            if self.start_date.text.strip():
+                datetime.strptime(self.start_date.text.strip(), "%Y-%m-%d")
+            else:
+                errors.append("Start date is required")
+        except ValueError:
+            errors.append("Invalid start date format (use YYYY-MM-DD)")
+            
+        try:
+            if self.end_date.text.strip():
+                datetime.strptime(self.end_date.text.strip(), "%Y-%m-%d")
+            else:
+                errors.append("End date is required")
+        except ValueError:
+            errors.append("Invalid end date format (use YYYY-MM-DD)")
+            
+        # Validate frequency
+        if not self.frequency.text.strip():
+            errors.append("Frequency is required")
+            
+        return errors
+
+    def load_schedule(self, instance):
+        """Load schedule data for updating"""
+        try:
+            schedule_id = self.schedule_id.text.strip()
+            
+            if not schedule_id:
+                self.show_error("Please enter a Schedule ID to load")
+                return
+                
+            if not schedule_id.isdigit():
+                self.show_error("Schedule ID must be a number")
+                return
+                
+            app = App.get_running_app()
+            app.cursor.execute("""
+                SELECT med_id, consumption_start, consumption_end, frequency
+                FROM schedule WHERE schedule_id = ?
+            """, (schedule_id,))
+            
+            result = app.cursor.fetchone()
+            if not result:
+                self.show_error(f"No schedule found with ID {schedule_id}")
+                return
+                
+            # Populate input fields
+            self.med_id.text = str(result[0])
+            self.start_date.text = result[1]
+            self.end_date.text = result[2]
+            self.frequency.text = result[3]
+            
+            self.show_success(f"Loaded schedule data for ID {schedule_id}")
+            
+        except sqlite3.Error as e:
+            self.show_error(f"Database error: {str(e)}")
+        except Exception as e:
+            self.show_error(f"Error loading schedule: {str(e)}")
+
+    def update_schedule(self, instance):
+        """Update existing schedule"""
+        try:
+            schedule_id = self.schedule_id.text.strip()
+            
+            if not schedule_id:
+                self.show_error("Please enter a Schedule ID to update")
+                return
+                
+            if not schedule_id.isdigit():
+                self.show_error("Schedule ID must be a number")
+                return
+                
+            # Validate inputs
+            errors = self.validate_schedule()
+            if errors:
+                self.show_error("\n".join(errors))
+                return
+                
+            med_id = self.med_id.text.strip()
+            start_date = self.start_date.text.strip()
+            end_date = self.end_date.text.strip()
+            frequency = self.frequency.text.strip()
+            
+            app = App.get_running_app()
+            
+            # Check if schedule exists
+            app.cursor.execute("SELECT schedule_id FROM schedule WHERE schedule_id = ?", (schedule_id,))
+            if not app.cursor.fetchone():
+                self.show_error(f"No schedule found with ID {schedule_id}")
+                return
+                
+            # Check if medicine exists
+            app.cursor.execute("SELECT med_id FROM med_info WHERE med_id = ?", (med_id,))
+            if not app.cursor.fetchone():
+                self.show_error(f"Medicine with ID {med_id} does not exist")
+                return
+            
+            # Update the schedule
+            app.cursor.execute("""
+                UPDATE schedule SET
+                    med_id = ?,
+                    consumption_start = ?,
+                    consumption_end = ?,
+                    frequency = ?
+                WHERE schedule_id = ?
+            """, (med_id, start_date, end_date, frequency, schedule_id))
+            app.conn.commit()
+            
+            # Clear inputs
+            self.schedule_id.text = ""
+            self.med_id.text = ""
+            self.start_date.text = ""
+            self.end_date.text = ""
+            self.frequency.text = ""
+            
+            self.show_success(f"Successfully updated schedule {schedule_id}")
+            self.refresh_list()
+            
+        except sqlite3.Error as e:
+            self.show_error(f"Database error: {str(e)}")
+        except Exception as e:
+            self.show_error(f"Error updating schedule: {str(e)}")
+
+    def delete_schedule(self, instance):
+        """Delete existing schedule"""
+        try:
+            schedule_id = self.schedule_id.text.strip()
+            
+            if not schedule_id:
+                self.show_error("Please enter a Schedule ID to delete")
+                return
+                
+            if not schedule_id.isdigit():
+                self.show_error("Schedule ID must be a number")
+                return
+                
+            app = App.get_running_app()
+            
+            # Check if schedule exists
+            app.cursor.execute("SELECT schedule_id FROM schedule WHERE schedule_id = ?", (schedule_id,))
+            if not app.cursor.fetchone():
+                self.show_error(f"No schedule found with ID {schedule_id}")
+                return
+            
+            # Delete the schedule
+            app.cursor.execute("DELETE FROM schedule WHERE schedule_id = ?", (schedule_id,))
+            app.conn.commit()
+            
+            # Clear inputs
+            self.schedule_id.text = ""
+            self.med_id.text = ""
+            self.start_date.text = ""
+            self.end_date.text = ""
+            self.frequency.text = ""
+            
+            self.show_success(f"Successfully deleted schedule {schedule_id}")
+            self.refresh_list()
+            
+        except sqlite3.Error as e:
+            self.show_error(f"Database error: {str(e)}")
+        except Exception as e:
+            self.show_error(f"Error deleting schedule: {str(e)}")
 
     def refresh_list(self):
+        """Refresh the schedule list"""
         self.list_content.clear_widgets()
-        conn = sqlite3.connect("medassist.db")
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT s.med_id, m.med_name, s.consumption_start, s.consumption_end, s.frequency 
-            FROM schedule s 
-            JOIN med_info m ON s.med_id = m.med_id
-            ORDER BY s.consumption_start
-        """)
-        schedules = cursor.fetchall()
-        conn.close()
-
-        for schedule in schedules:
-            item = BoxLayout(orientation="horizontal", size_hint_y=None, height=40)
-            item.add_widget(Label(
-                text=f"Schedule #{schedule[0]} | {schedule[1]}\nFrom {schedule[2]} to {schedule[3]} ({schedule[4]})",
-                size_hint_x=1,
-                halign='left'
-            ))
-            self.list_content.add_widget(item)
-
-    def add_schedule(self, instance):
         try:
-            med_id = int(self.med_id.text.strip())
-            start_date = datetime.strptime(self.start_date.text.strip(), "%Y-%m-%d").date()
-            end_date = datetime.strptime(self.end_date.text.strip(), "%Y-%m-%d").date()
+            conn = sqlite3.connect("medassist.db")
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT s.schedule_id, m.med_name, s.consumption_start, s.consumption_end, s.frequency 
+                FROM schedule s 
+                JOIN med_info m ON s.med_id = m.med_id
+                ORDER BY s.consumption_start
+            """)
+            schedules = cursor.fetchall()
+            conn.close()
+
+            if not schedules:
+                self.list_content.add_widget(Label(
+                    text="No schedules found",
+                    size_hint_y=None,
+                    height=40
+                ))
+                return
+
+            for schedule in schedules:
+                item = BoxLayout(orientation="horizontal", size_hint_y=None, height=40)
+                item.add_widget(Label(
+                    text=f"ID: {schedule[0]} | Medicine: {schedule[1]}\nFrom {schedule[2]} to {schedule[3]} ({schedule[4]})",
+                    size_hint_x=1,
+                    halign='left'
+                ))
+                self.list_content.add_widget(item)
+
+        except sqlite3.Error as e:
+            self.show_error(f"Database error: {str(e)}")
+            
+    def add_schedule(self, instance):
+        """Add new schedule"""
+        try:
+            # Validate inputs
+            errors = self.validate_schedule()
+            if errors:
+                self.show_error("\n".join(errors))
+                return
+                
+            med_id = self.med_id.text.strip()
+            start_date = self.start_date.text.strip()
+            end_date = self.end_date.text.strip()
             frequency = self.frequency.text.strip()
-
-            if all([med_id, start_date, end_date, frequency]):
-                conn = sqlite3.connect("medassist.db")
-                cursor = conn.cursor()
-                cursor.execute("""
-                    INSERT INTO schedule (med_id, consumption_start, consumption_end, frequency) 
-                    VALUES (?, ?, ?, ?)
-                """, (med_id, start_date, end_date, frequency))
-                conn.commit()
-                conn.close()
-
-                self.med_id.text = ""
-                self.start_date.text = ""
-                self.end_date.text = ""
-                self.frequency.text = ""
-                self.refresh_list()
-        except (ValueError, sqlite3.Error) as e:
-            print(f"Error adding schedule: {e}")
+            
+            app = App.get_running_app()
+            
+            # Check if medicine exists
+            app.cursor.execute("SELECT med_id FROM med_info WHERE med_id = ?", (med_id,))
+            if not app.cursor.fetchone():
+                self.show_error(f"Medicine with ID {med_id} does not exist")
+                return
+            
+            # Add the schedule
+            app.cursor.execute("""
+                INSERT INTO schedule (med_id, consumption_start, consumption_end, frequency)
+                VALUES (?, ?, ?, ?)
+            """, (med_id, start_date, end_date, frequency))
+            app.conn.commit()
+            
+            # Clear inputs
+            self.med_id.text = ""
+            self.start_date.text = ""
+            self.end_date.text = ""
+            self.frequency.text = ""
+            
+            self.show_success("Successfully added new schedule")
+            self.refresh_list()
+            
+        except sqlite3.Error as e:
+            self.show_error(f"Database error: {str(e)}")
+        except Exception as e:
+            self.show_error(f"Error adding schedule: {str(e)}")
 
 
 class InventoryScreen(BaseCrudScreen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.title_label.text = "Inventory Management"
-
+        
         # Add input fields
-        self.med_id = TextInput(hint_text="Medicine ID", multiline=False)
-        self.quantity = TextInput(hint_text="Quantity", multiline=False)
+        self.med_id = TextInput(hint_text="Medicine ID (required)", multiline=False)
+        self.quantity = TextInput(hint_text="Quantity (required)", multiline=False)
         self.expiration = TextInput(hint_text="Expiration Date (YYYY-MM-DD)", multiline=False)
+        
+        # Add field for inventory ID (for update/delete)
+        self.inventory_id = TextInput(
+            hint_text="Inventory ID (for update/delete)",
+            multiline=False,
+            size_hint_y=None,
+            height=40
+        )
+        
+        # Add status label for messages
+        self.status_label = Label(
+            text="",
+            color=(1, 0, 0, 1),  # Red for errors
+            size_hint_y=None,
+            height=30
+        )
 
         # Add buttons
-        add_btn = Button(text="Add Inventory", background_color="#00a8f3")
+        add_btn = Button(
+            text="Add Inventory",
+            background_color=(0, 0.7, 0, 1),  # Green
+            size_hint_y=None,
+            height=40
+        )
         add_btn.bind(on_press=self.add_inventory)
-
-        refresh_btn = Button(text="Refresh List", background_color="#666666")
+        
+        load_btn = Button(
+            text="Load Inventory",
+            background_color=(0.3, 0.5, 0.9, 1),  # Light blue
+            size_hint_y=None,
+            height=40
+        )
+        load_btn.bind(on_press=self.load_inventory)
+        
+        update_btn = Button(
+            text="Update Inventory",
+            background_color=(0, 0.6, 1, 1),  # Blue
+            size_hint_y=None,
+            height=40
+        )
+        update_btn.bind(on_press=self.update_inventory)
+        
+        delete_btn = Button(
+            text="Delete Inventory",
+            background_color=(0.8, 0.2, 0.2, 1),  # Red
+            size_hint_y=None,
+            height=40
+        )
+        delete_btn.bind(on_press=self.delete_inventory)
+        
+        refresh_btn = Button(
+            text="Refresh List",
+            background_color=(0.5, 0.5, 0.5, 1),  # Gray
+            size_hint_y=None,
+            height=40
+        )
         refresh_btn.bind(on_press=lambda x: self.refresh_list())
-
+        
+        # Add fields and buttons to controls layout
+        self.controls_layout.add_widget(Label(
+            text="Add/Update Inventory",
+            bold=True,
+            size_hint_y=None,
+            height=30
+        ))
         self.controls_layout.add_widget(self.med_id)
         self.controls_layout.add_widget(self.quantity)
         self.controls_layout.add_widget(self.expiration)
+        self.controls_layout.add_widget(Widget(size_hint_y=None, height=20))  # Spacer
+        
+        self.controls_layout.add_widget(Label(
+            text="Inventory ID for Update/Delete",
+            bold=True,
+            size_hint_y=None,
+            height=30
+        ))
+        self.controls_layout.add_widget(self.inventory_id)
+        self.controls_layout.add_widget(Widget(size_hint_y=None, height=10))  # Spacer
+        
         self.controls_layout.add_widget(add_btn)
+        self.controls_layout.add_widget(load_btn)
+        self.controls_layout.add_widget(update_btn)
+        self.controls_layout.add_widget(delete_btn)
         self.controls_layout.add_widget(refresh_btn)
+        self.controls_layout.add_widget(self.status_label)
 
-        self.refresh_list()
+    def show_error(self, message):
+        """Display error message"""
+        self.status_label.text = message
+        self.status_label.color = (1, 0, 0, 1)  # Red
+
+    def show_success(self, message):
+        """Display success message"""
+        self.status_label.text = message
+        self.status_label.color = (0, 0.8, 0, 1)  # Green
+
+    def validate_inventory(self):
+        """Validate inventory input fields"""
+        errors = []
+        
+        # Validate Medicine ID
+        if not self.med_id.text.strip():
+            errors.append("Medicine ID is required")
+        elif not self.med_id.text.strip().isdigit():
+            errors.append("Medicine ID must be a number")
+            
+        # Validate quantity
+        if not self.quantity.text.strip():
+            errors.append("Quantity is required")
+        elif not self.quantity.text.strip().isdigit():
+            errors.append("Quantity must be a number")
+        elif int(self.quantity.text.strip()) < 0:
+            errors.append("Quantity cannot be negative")
+            
+        # Validate expiration date
+        try:
+            if self.expiration.text.strip():
+                expiration_date = datetime.strptime(self.expiration.text.strip(), "%Y-%m-%d").date()
+                if expiration_date < datetime.now().date():
+                    errors.append("Expiration date cannot be in the past")
+            else:
+                errors.append("Expiration date is required")
+        except ValueError:
+            errors.append("Invalid expiration date format (use YYYY-MM-DD)")
+            
+        return errors
+
+    def load_inventory(self, instance):
+        """Load inventory data for updating"""
+        try:
+            inventory_id = self.inventory_id.text.strip()
+            
+            if not inventory_id:
+                self.show_error("Please enter an Inventory ID to load")
+                return
+                
+            if not inventory_id.isdigit():
+                self.show_error("Inventory ID must be a number")
+                return
+                
+            app = App.get_running_app()
+            app.cursor.execute("""
+                SELECT med_id, quantity, expiration
+                FROM inventory WHERE inventory_id = ?
+            """, (inventory_id,))
+            
+            result = app.cursor.fetchone()
+            if not result:
+                self.show_error(f"No inventory found with ID {inventory_id}")
+                return
+                
+            # Populate input fields
+            self.med_id.text = str(result[0])
+            self.quantity.text = str(result[1])
+            self.expiration.text = result[2]
+            
+            self.show_success(f"Loaded inventory data for ID {inventory_id}")
+            
+        except sqlite3.Error as e:
+            self.show_error(f"Database error: {str(e)}")
+        except Exception as e:
+            self.show_error(f"Error loading inventory: {str(e)}")
+
+    def update_inventory(self, instance):
+        """Update existing inventory"""
+        try:
+            inventory_id = self.inventory_id.text.strip()
+            
+            if not inventory_id:
+                self.show_error("Please enter an Inventory ID to update")
+                return
+                
+            if not inventory_id.isdigit():
+                self.show_error("Inventory ID must be a number")
+                return
+                
+            # Validate inputs
+            errors = self.validate_inventory()
+            if errors:
+                self.show_error("\n".join(errors))
+                return
+                
+            med_id = self.med_id.text.strip()
+            quantity = self.quantity.text.strip()
+            expiration = self.expiration.text.strip()
+            
+            app = App.get_running_app()
+            
+            # Check if inventory exists
+            app.cursor.execute("SELECT inventory_id FROM inventory WHERE inventory_id = ?", (inventory_id,))
+            if not app.cursor.fetchone():
+                self.show_error(f"No inventory found with ID {inventory_id}")
+                return
+                
+            # Check if medicine exists
+            app.cursor.execute("SELECT med_id FROM med_info WHERE med_id = ?", (med_id,))
+            if not app.cursor.fetchone():
+                self.show_error(f"Medicine with ID {med_id} does not exist")
+                return
+            
+            # Update the inventory
+            app.cursor.execute("""
+                UPDATE inventory SET
+                    med_id = ?,
+                    quantity = ?,
+                    expiration = ?
+                WHERE inventory_id = ?
+            """, (med_id, quantity, expiration, inventory_id))
+            app.conn.commit()
+            
+            # Clear inputs
+            self.inventory_id.text = ""
+            self.med_id.text = ""
+            self.quantity.text = ""
+            self.expiration.text = ""
+            
+            self.show_success(f"Successfully updated inventory {inventory_id}")
+            self.refresh_list()
+            
+        except sqlite3.Error as e:
+            self.show_error(f"Database error: {str(e)}")
+        except Exception as e:
+            self.show_error(f"Error updating inventory: {str(e)}")
+
+    def delete_inventory(self, instance):
+        """Delete existing inventory"""
+        try:
+            inventory_id = self.inventory_id.text.strip()
+            
+            if not inventory_id:
+                self.show_error("Please enter an Inventory ID to delete")
+                return
+                
+            if not inventory_id.isdigit():
+                self.show_error("Inventory ID must be a number")
+                return
+                
+            app = App.get_running_app()
+            
+            # Check if inventory exists
+            app.cursor.execute("SELECT inventory_id FROM inventory WHERE inventory_id = ?", (inventory_id,))
+            if not app.cursor.fetchone():
+                self.show_error(f"No inventory found with ID {inventory_id}")
+                return
+            
+            # Delete the inventory
+            app.cursor.execute("DELETE FROM inventory WHERE inventory_id = ?", (inventory_id,))
+            app.conn.commit()
+            
+            # Clear inputs
+            self.inventory_id.text = ""
+            self.med_id.text = ""
+            self.quantity.text = ""
+            self.expiration.text = ""
+            
+            self.show_success(f"Successfully deleted inventory {inventory_id}")
+            self.refresh_list()
+            
+        except sqlite3.Error as e:
+            self.show_error(f"Database error: {str(e)}")
+        except Exception as e:
+            self.show_error(f"Error deleting inventory: {str(e)}")
 
     def refresh_list(self):
+        """Refresh the inventory list"""
         self.list_content.clear_widgets()
-        conn = sqlite3.connect("medassist.db")
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT i.med_id, m.med_name, i.quantity, i.expiration 
-            FROM inventory i 
-            JOIN med_info m ON i.med_id = m.med_id
-            ORDER BY i.expiration
-        """)
-        inventory_items = cursor.fetchall()
-        conn.close()
-
-        for item in inventory_items:
-            list_item = BoxLayout(orientation="horizontal", size_hint_y=None, height=40)
-            list_item.add_widget(Label(
-                text=f"Inventory #{item[0]} | {item[1]} | Quantity: {item[2]} | Expires: {item[3]}",
-                size_hint_x=1,
-                halign='left'
-            ))
-            self.list_content.add_widget(list_item)
-
-    def add_inventory(self, instance):
         try:
-            med_id = int(self.med_id.text.strip())
-            quantity = int(self.quantity.text.strip())
-            expiration = datetime.strptime(self.expiration.text.strip(), "%Y-%m-%d").date()
+            conn = sqlite3.connect("medassist.db")
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT i.inventory_id, m.med_name, i.quantity, i.expiration 
+                FROM inventory i 
+                JOIN med_info m ON i.med_id = m.med_id
+                ORDER BY i.expiration
+            """)
+            inventory_items = cursor.fetchall()
+            conn.close()
 
-            if all([med_id, quantity, expiration]):
-                conn = sqlite3.connect("medassist.db")
-                cursor = conn.cursor()
-                cursor.execute("""
-                    INSERT INTO inventory (med_id, quantity, expiration) 
-                    VALUES (?, ?, ?)
-                """, (med_id, quantity, expiration))
-                conn.commit()
-                conn.close()
+            if not inventory_items:
+                self.list_content.add_widget(Label(
+                    text="No inventory items found",
+                    size_hint_y=None,
+                    height=40
+                ))
+                return
 
-                self.med_id.text = ""
-                self.quantity.text = ""
-                self.expiration.text = ""
-                self.refresh_list()
-        except (ValueError, sqlite3.Error) as e:
-            print(f"Error adding inventory: {e}")
+            for item in inventory_items:
+                list_item = BoxLayout(orientation="horizontal", size_hint_y=None, height=40)
+                list_item.add_widget(Label(
+                    text=f"ID: {item[0]} | Medicine: {item[1]} | Quantity: {item[2]} | Expires: {item[3]}",
+                    size_hint_x=1,
+                    halign='left'
+                ))
+                self.list_content.add_widget(list_item)
+
+        except sqlite3.Error as e:
+            self.show_error(f"Database error: {str(e)}")
+            
+    def add_inventory(self, instance):
+        """Add new inventory"""
+        try:
+            # Validate inputs
+            errors = self.validate_inventory()
+            if errors:
+                self.show_error("\n".join(errors))
+                return
+                
+            med_id = self.med_id.text.strip()
+            quantity = self.quantity.text.strip()
+            expiration = self.expiration.text.strip()
+            
+            app = App.get_running_app()
+            
+            # Check if medicine exists
+            app.cursor.execute("SELECT med_id FROM med_info WHERE med_id = ?", (med_id,))
+            if not app.cursor.fetchone():
+                self.show_error(f"Medicine with ID {med_id} does not exist")
+                return
+            
+            # Add the inventory
+            app.cursor.execute("""
+                INSERT INTO inventory (med_id, quantity, expiration)
+                VALUES (?, ?, ?)
+            """, (med_id, quantity, expiration))
+            app.conn.commit()
+            
+            # Clear inputs
+            self.med_id.text = ""
+            self.quantity.text = ""
+            self.expiration.text = ""
+            
+            self.show_success("Successfully added new inventory")
+            self.refresh_list()
+            
+        except sqlite3.Error as e:
+            self.show_error(f"Database error: {str(e)}")
+        except Exception as e:
+            self.show_error(f"Error adding inventory: {str(e)}")
 
 
 class MedicineScreen(Screen):
@@ -844,6 +1407,50 @@ class MedicineScreen(Screen):
         add_btn.bind(on_press=self.add_medicine)
         add_section.add_widget(add_btn)
         
+        # Update Medicine Section
+        update_section = BoxLayout(orientation='vertical', spacing=5, size_hint_y=None, height=120)
+        update_section.add_widget(Label(
+            text="Update Medicine",
+            bold=True,
+            size_hint_y=None,
+            height=30,
+            color=(0, 0.6, 1, 1)  # Blue
+        ))
+        
+        # Add ID field for update
+        self.update_id_input = TextInput(
+            hint_text="Enter Medicine ID to update",
+            multiline=False,
+            size_hint_y=None,
+            height=40
+        )
+        update_section.add_widget(self.update_id_input)
+        
+        update_btn_layout = BoxLayout(
+            orientation='horizontal',
+            size_hint_y=None,
+            height=40,
+            spacing=5
+        )
+        
+        load_btn = Button(
+            text="Load Data",
+            background_color=(0.3, 0.5, 0.9, 1),  # Light blue
+            size_hint_x=0.5
+        )
+        load_btn.bind(on_press=self.load_medicine_data)
+        
+        update_btn = Button(
+            text="Update",
+            background_color=(0, 0.6, 1, 1),  # Blue
+            size_hint_x=0.5
+        )
+        update_btn.bind(on_press=self.update_medicine)
+        
+        update_btn_layout.add_widget(load_btn)
+        update_btn_layout.add_widget(update_btn)
+        update_section.add_widget(update_btn_layout)
+        
         # Delete Medicine Section
         delete_section = BoxLayout(orientation='vertical', spacing=5, size_hint_y=None, height=120)
         delete_section.add_widget(Label(
@@ -865,6 +1472,8 @@ class MedicineScreen(Screen):
 
         # Add sections to controls layout
         controls_layout.add_widget(add_section)
+        controls_layout.add_widget(Widget(size_hint_y=None, height=20))  # Spacer
+        controls_layout.add_widget(update_section)
         controls_layout.add_widget(Widget(size_hint_y=None, height=20))  # Spacer
         controls_layout.add_widget(delete_section)
         controls_layout.add_widget(self.status_label)
@@ -1250,6 +1859,120 @@ class MedicineScreen(Screen):
             self.show_error(f"Invalid input: {str(e)}")
         except Exception as e:
             self.show_error(f"Unexpected error: {str(e)}")
+
+    def load_medicine_data(self, instance):
+        """Load medicine data into input fields for updating"""
+        try:
+            med_id = self.update_id_input.text.strip()
+            
+            if not med_id:
+                self.show_error("Please enter a Medicine ID to load")
+                return
+                
+            if not med_id.isdigit():
+                self.show_error("Medicine ID must be a number")
+                return
+                
+            app = App.get_running_app()
+            app.cursor.execute("""
+                SELECT med_name, med_type, dosage_form, strength,
+                       manufacturer, indication, classification
+                FROM med_info WHERE med_id = ?
+            """, (med_id,))
+            
+            result = app.cursor.fetchone()
+            if not result:
+                self.show_error(f"No medicine found with ID {med_id}")
+                return
+                
+            # Populate input fields with existing data
+            self.name_input.text = result[0] or ""
+            self.type_input.text = result[1] or ""
+            self.dosage_form_input.text = result[2] or ""
+            self.strength_input.text = result[3] or ""
+            self.manufacturer_input.text = result[4] or ""
+            self.indication_input.text = result[5] or ""
+            self.classification_input.text = result[6] or ""
+            
+            self.show_success(f"Loaded data for medicine ID {med_id}")
+            
+        except sqlite3.Error as e:
+            self.show_error(f"Database error: {str(e)}")
+        except Exception as e:
+            self.show_error(f"Error loading medicine data: {str(e)}")
+
+    def update_medicine(self, instance):
+        """Update existing medicine record"""
+        try:
+            # Clear previous status
+            self.show_error("")
+            
+            # Get the medicine ID
+            med_id = self.update_id_input.text.strip()
+            if not med_id:
+                self.show_error("Please enter a Medicine ID to update")
+                return
+                
+            if not med_id.isdigit():
+                self.show_error("Medicine ID must be a number")
+                return
+            
+            # Validate inputs
+            errors = self.validate_inputs("add")  # Reuse add validation
+            if errors:
+                self.show_error("\n".join(errors))
+                return
+                
+            name = self.name_input.text.strip()
+            med_type = self.type_input.text.strip()
+            dosage_form = self.dosage_form_input.text.strip() or None
+            strength = self.strength_input.text.strip() or None
+            manufacturer = self.manufacturer_input.text.strip() or None
+            indication = self.indication_input.text.strip() or None
+            classification = self.classification_input.text.strip() or None
+
+            app = App.get_running_app()
+            
+            # Check if medicine exists
+            app.cursor.execute("SELECT med_id FROM med_info WHERE med_id = ?", (med_id,))
+            if not app.cursor.fetchone():
+                self.show_error(f"No medicine found with ID {med_id}")
+                return
+            
+            # Check if new name conflicts with existing medicine (excluding current record)
+            app.cursor.execute("SELECT med_id FROM med_info WHERE med_name = ? AND med_id != ?", (name, med_id))
+            if app.cursor.fetchone():
+                self.show_error(f"Another medicine with name '{name}' already exists")
+                return
+
+            # Update the medicine
+            app.cursor.execute("""
+                UPDATE med_info SET
+                    med_name = ?, med_type = ?, dosage_form = ?,
+                    strength = ?, manufacturer = ?, indication = ?,
+                    classification = ?
+                WHERE med_id = ?
+            """, (name, med_type, dosage_form, strength,
+                  manufacturer, indication, classification, med_id))
+            app.conn.commit()
+
+            # Clear inputs
+            self.update_id_input.text = ""
+            self.name_input.text = ""
+            self.type_input.text = ""
+            self.dosage_form_input.text = ""
+            self.strength_input.text = ""
+            self.manufacturer_input.text = ""
+            self.indication_input.text = ""
+            self.classification_input.text = ""
+
+            self.show_success(f"Successfully updated medicine: {name}")
+            self.refresh_medicines()
+
+        except sqlite3.Error as e:
+            self.show_error(f"Database error: {str(e)}")
+        except Exception as e:
+            self.show_error(f"Error updating medicine: {str(e)}")
 
 
 class MedicineApp(App):
