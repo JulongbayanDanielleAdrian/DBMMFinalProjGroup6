@@ -11,7 +11,11 @@ from kivy.uix.textinput import TextInput
 from kivy.uix.image import Image
 from kivy.uix.scrollview import ScrollView
 from datetime import datetime
+from kivy.graphics import Color, Rectangle
+from kivy.core.window import Window
 
+# Set default window size
+Window.size = (1600, 900)
 
 # ---------- Database setup ----------
 def init_db():
@@ -186,19 +190,88 @@ class LoginScreen(Screen):
 class DashboardScreen(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.layout = BoxLayout(orientation="vertical", spacing=10, padding=20)
-        self.label = Label(text="Welcome!", font_size=24)
-        self.layout.add_widget(self.label)
-        self.layout.add_widget(
-            Button(text="Medicine Management", on_press=lambda x: setattr(self.manager, "current", "medicine")))
-        self.layout.add_widget(Button(text="Schedule", on_press=lambda x: setattr(self.manager, "current", "schedule")))
-        self.layout.add_widget(
-            Button(text="Inventory", on_press=lambda x: setattr(self.manager, "current", "inventory")))
-        self.layout.add_widget(Button(text="Logout", on_press=self.logout))
-        self.add_widget(self.layout)
+        layout = BoxLayout(orientation="vertical", spacing=20, padding=30)
+        
+        # Header
+        header = Label(
+            text="Medicine Management Dashboard",
+            font_size=32,
+            color=(0, 0.6, 1, 1),  # Light blue
+            size_hint_y=0.2
+        )
+        layout.add_widget(header)
+        
+        # Welcome message
+        self.welcome_label = Label(
+            text="Welcome!",
+            font_size=24,
+            color=(0.2, 0.8, 0.2, 1),  # Green
+            size_hint_y=0.1
+        )
+        layout.add_widget(self.welcome_label)
+
+        # Buttons grid
+        buttons_layout = GridLayout(
+            cols=2,
+            spacing=20,
+            size_hint_y=0.6,
+            padding=[20, 20]
+        )
+
+        # Create styled buttons
+        med_btn = Button(
+            text="Medicine\nManagement",
+            background_color=(0, 0.6, 1, 1),  # Light blue
+            font_size=20,
+            halign='center',
+            valign='middle'
+        )
+        med_btn.bind(on_press=lambda x: setattr(self.manager, "current", "medicine"))
+
+        schedule_btn = Button(
+            text="Schedule\nManagement",
+            background_color=(0, 0.8, 0, 1),  # Green
+            font_size=20,
+            halign='center',
+            valign='middle'
+        )
+        schedule_btn.bind(on_press=lambda x: setattr(self.manager, "current", "schedule"))
+
+        inventory_btn = Button(
+            text="Inventory\nManagement",
+            background_color=(1, 0.6, 0, 1),  # Orange
+            font_size=20,
+            halign='center',
+            valign='middle'
+        )
+        inventory_btn.bind(on_press=lambda x: setattr(self.manager, "current", "inventory"))
+
+        logout_btn = Button(
+            text="Logout",
+            background_color=(0.8, 0.2, 0.2, 1),  # Red
+            font_size=20,
+            halign='center',
+            valign='middle'
+        )
+        logout_btn.bind(on_press=self.logout)
+
+        # Add buttons to grid
+        for btn in [med_btn, schedule_btn, inventory_btn, logout_btn]:
+            buttons_layout.add_widget(btn)
+
+        layout.add_widget(buttons_layout)
+        self.add_widget(layout)
+
+    def update_welcome(self, username):
+        self.welcome_label.text = f"Welcome, {username}!"
 
     def logout(self, instance):
-        self.manager.current = "login"
+        app = App.get_running_app()
+        app.username = None
+        app.screen_manager.current = "login"
+        app.screen_manager.get_screen("login").username.text = ""
+        app.screen_manager.get_screen("login").password.text = ""
+        app.screen_manager.get_screen("login").greeting.text = "Welcome to MedAssist!!"
 
 
 class BaseCrudScreen(Screen):
@@ -521,21 +594,70 @@ class MedicineScreen(Screen):
         self.items_per_page = 10
         self.total_items = 0
         
-        layout = BoxLayout(orientation="vertical", padding=10, spacing=10)
+        # Create input fields first
+        self.name_input = TextInput(hint_text="Enter name", multiline=False)
+        self.type_input = TextInput(hint_text="Enter type", multiline=False)
+        self.dosage_form_input = TextInput(hint_text="Enter form", multiline=False)
+        self.strength_input = TextInput(hint_text="Enter strength", multiline=False)
+        self.manufacturer_input = TextInput(hint_text="Enter manufacturer", multiline=False)
+        self.indication_input = TextInput(hint_text="Enter indication", multiline=False)
+        self.classification_input = TextInput(hint_text="Enter classification", multiline=False)
+        
+        layout = BoxLayout(orientation="vertical", padding=15, spacing=10)
+
+        # Header
+        header = Label(
+            text="Medicine Information Management",
+            font_size=28,
+            color=(0, 0.6, 1, 1),  # Light blue
+            size_hint_y=None,
+            height=50
+        )
+        layout.add_widget(header)
 
         # Main layout for the list and controls
-        main_layout = BoxLayout(orientation="horizontal", padding=10, spacing=10)
+        main_layout = BoxLayout(orientation="horizontal", padding=10, spacing=15)
 
         # Data layout (list area)
-        self.data_layout = BoxLayout(orientation="vertical", size_hint=(0.7, 1))
+        self.data_layout = BoxLayout(
+            orientation="vertical",
+            size_hint=(0.7, 1),
+            padding=10
+        )
+        with self.data_layout.canvas.before:
+            Color(0.95, 0.95, 0.95, 1)  # Light gray background
+            self.data_layout.rect = Rectangle(pos=self.data_layout.pos, size=self.data_layout.size)
+        self.data_layout.bind(pos=self._update_rect, size=self._update_rect)
         
         # Add pagination controls at the top
-        pagination_layout = BoxLayout(orientation="horizontal", size_hint_y=None, height=40, spacing=5)
-        self.prev_btn = Button(text="Previous", size_hint_x=None, width=100)
+        pagination_layout = BoxLayout(
+            orientation="horizontal",
+            size_hint_y=None,
+            height=40,
+            spacing=10,
+            padding=[0, 5]
+        )
+        
+        self.prev_btn = Button(
+            text="Previous",
+            size_hint_x=None,
+            width=100,
+            background_color=(0.3, 0.5, 0.9, 1)  # Blue
+        )
         self.prev_btn.bind(on_press=lambda x: self.change_page(-1))
-        self.next_btn = Button(text="Next", size_hint_x=None, width=100)
+        
+        self.next_btn = Button(
+            text="Next",
+            size_hint_x=None,
+            width=100,
+            background_color=(0.3, 0.5, 0.9, 1)  # Blue
+        )
         self.next_btn.bind(on_press=lambda x: self.change_page(1))
-        self.page_label = Label(text="Page 1")
+        
+        self.page_label = Label(
+            text="Page 1",
+            color=(0.2, 0.2, 0.2, 1)  # Dark gray
+        )
         
         pagination_layout.add_widget(self.prev_btn)
         pagination_layout.add_widget(self.page_label)
@@ -543,61 +665,101 @@ class MedicineScreen(Screen):
         self.data_layout.add_widget(pagination_layout)
         
         # Create table header
-        header_layout = GridLayout(cols=5, size_hint_y=None, height=40)
+        header_layout = GridLayout(
+            cols=5,
+            size_hint_y=None,
+            height=40,
+            spacing=(2, 0)
+        )
         headers = ['ID/Name', 'Type/Form', 'Strength', 'Manufacturer', 'Indication/Class']
-        for header in headers:
-            header_layout.add_widget(
-                Label(text=header, bold=True, size_hint_y=None, height=40)
+        for header_text in headers:
+            header_label = Label(
+                text=header_text,
+                bold=True,
+                size_hint_y=None,
+                height=40,
+                color=(0.2, 0.2, 0.2, 1)  # Dark gray
             )
+            with header_label.canvas.before:
+                Color(0.85, 0.85, 0.85, 1)  # Header background
+                header_label.rect = Rectangle(pos=header_label.pos, size=header_label.size)
+            header_label.bind(pos=self._update_rect, size=self._update_rect)
+            header_layout.add_widget(header_label)
         self.data_layout.add_widget(header_layout)
 
         # Scroll view for medicine list
         self.scroll_view = ScrollView(size_hint=(1, 1))
-        self.list_layout = GridLayout(cols=5, spacing=(10, 5), size_hint_y=None, padding=(5, 5))
+        self.list_layout = GridLayout(
+            cols=5,
+            spacing=(2, 2),
+            size_hint_y=None,
+            padding=(5, 5)
+        )
         self.list_layout.bind(minimum_height=self.list_layout.setter('height'))
         self.scroll_view.add_widget(self.list_layout)
         self.data_layout.add_widget(self.scroll_view)
 
         # Controls layout
-        controls_layout = BoxLayout(orientation="vertical", size_hint=(0.3, 1), spacing=10)
+        controls_layout = BoxLayout(
+            orientation="vertical",
+            size_hint=(0.3, 1),
+            spacing=10,
+            padding=10
+        )
+        with controls_layout.canvas.before:
+            Color(0.9, 0.9, 0.9, 1)  # Light gray background
+            controls_layout.rect = Rectangle(pos=controls_layout.pos, size=controls_layout.size)
+        controls_layout.bind(pos=self._update_rect, size=self._update_rect)
 
-        # Input fields
-        self.name_input = TextInput(hint_text="Medicine Name", multiline=False)
-        self.type_input = TextInput(hint_text="Medicine Type", multiline=False)
-        self.dosage_form_input = TextInput(hint_text="Dosage Form", multiline=False)
-        self.strength_input = TextInput(hint_text="Strength", multiline=False)
-        self.manufacturer_input = TextInput(hint_text="Manufacturer", multiline=False)
-        self.indication_input = TextInput(hint_text="Indication", multiline=False)
-        self.classification_input = TextInput(hint_text="Classification", multiline=False)
+        # Input fields with labels
+        input_fields = [
+            ("Medicine Name", self.name_input),
+            ("Medicine Type", self.type_input),
+            ("Dosage Form", self.dosage_form_input),
+            ("Strength", self.strength_input),
+            ("Manufacturer", self.manufacturer_input),
+            ("Indication", self.indication_input),
+            ("Classification", self.classification_input)
+        ]
 
-        # Buttons
-        refresh_btn = Button(text="Refresh")
+        for label_text, input_widget in input_fields:
+            field_layout = BoxLayout(orientation='vertical', size_hint_y=None, height=60)
+            field_layout.add_widget(Label(
+                text=label_text,
+                size_hint_y=None,
+                height=20,
+                color=(0.2, 0.2, 0.2, 1)  # Dark gray
+            ))
+            field_layout.add_widget(input_widget)
+            controls_layout.add_widget(field_layout)
+
+        # Create buttons
+        refresh_btn = Button(
+            text="Refresh",
+            background_color=(0.3, 0.5, 0.9, 1)  # Blue
+        )
+        add_btn = Button(
+            text="Add Medicine",
+            background_color=(0, 0.7, 0, 1)  # Green
+        )
+        delete_btn = Button(
+            text="Delete Medicine",
+            background_color=(0.8, 0.2, 0.2, 1)  # Red
+        )
+        back_btn = Button(
+            text="Back to Dashboard",
+            background_color=(0.5, 0.5, 0.5, 1)  # Gray
+        )
+
+        # Bind button events
         refresh_btn.bind(on_press=self.refresh_medicines)
-
-        add_btn = Button(text="Add Medicine")
         add_btn.bind(on_press=self.add_medicine)
-
-        delete_btn = Button(text="Delete Medicine")
         delete_btn.bind(on_press=self.delete_medicine)
-
-        back_btn = Button(text="Back to Dashboard")
         back_btn.bind(on_press=lambda x: setattr(self.manager, "current", "dashboard"))
 
-        # Add widgets to controls
-        for widget in [
-            self.name_input, 
-            self.type_input,
-            self.dosage_form_input,
-            self.strength_input,
-            self.manufacturer_input,
-            self.indication_input,
-            self.classification_input,
-            refresh_btn,
-            add_btn,
-            delete_btn,
-            back_btn
-        ]:
-            controls_layout.add_widget(widget)
+        # Add buttons to controls
+        for btn in [refresh_btn, add_btn, delete_btn, back_btn]:
+            controls_layout.add_widget(btn)
 
         # Add layouts to main layout
         main_layout.add_widget(self.data_layout)
@@ -605,6 +767,11 @@ class MedicineScreen(Screen):
         layout.add_widget(main_layout)
 
         self.add_widget(layout)
+
+    def _update_rect(self, instance, value):
+        """Update the Rectangle position and size when the widget changes."""
+        instance.rect.pos = instance.pos
+        instance.rect.size = instance.size
 
     def change_page(self, direction):
         new_page = self.page + direction
@@ -651,7 +818,12 @@ class MedicineScreen(Screen):
             if not medicines:
                 # Add a "No medicines found" message spanning all columns
                 self.list_layout.add_widget(
-                    Label(text="No medicines found", size_hint_y=None, height=40)
+                    Label(
+                        text="No medicines found",
+                        size_hint_y=None,
+                        height=40,
+                        color=(0, 0, 0, 1)  # Black text
+                    )
                 )
                 return
 
@@ -664,7 +836,8 @@ class MedicineScreen(Screen):
                         size_hint_y=None, 
                         height=60,
                         text_size=(None, None),
-                        halign='left'
+                        halign='left',
+                        color=(0, 0, 0, 1)  # Black text
                     )
                 )
                 
@@ -678,7 +851,8 @@ class MedicineScreen(Screen):
                         size_hint_y=None,
                         height=60,
                         text_size=(None, None),
-                        halign='left'
+                        halign='left',
+                        color=(0, 0, 0, 1)  # Black text
                     )
                 )
                 
@@ -689,7 +863,8 @@ class MedicineScreen(Screen):
                         size_hint_y=None,
                         height=60,
                         text_size=(None, None),
-                        halign='left'
+                        halign='left',
+                        color=(0, 0, 0, 1)  # Black text
                     )
                 )
                 
@@ -700,7 +875,8 @@ class MedicineScreen(Screen):
                         size_hint_y=None,
                         height=60,
                         text_size=(None, None),
-                        halign='left'
+                        halign='left',
+                        color=(0, 0, 0, 1)  # Black text
                     )
                 )
                 
@@ -714,7 +890,8 @@ class MedicineScreen(Screen):
                         size_hint_y=None,
                         height=60,
                         text_size=(None, None),
-                        halign='left'
+                        halign='left',
+                        color=(0, 0, 0, 1)  # Black text
                     )
                 )
             
@@ -728,7 +905,8 @@ class MedicineScreen(Screen):
                 Label(
                     text=f"Error loading medicines: {str(e)}", 
                     size_hint_y=None, 
-                    height=40
+                    height=40,
+                    color=(0, 0, 0, 1)  # Black text
                 )
             )
         except Exception as e:
@@ -738,7 +916,8 @@ class MedicineScreen(Screen):
                 Label(
                     text=f"Unexpected error: {str(e)}", 
                     size_hint_y=None, 
-                    height=40
+                    height=40,
+                    color=(0, 0, 0, 1)  # Black text
                 )
             )
 
