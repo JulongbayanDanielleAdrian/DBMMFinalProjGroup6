@@ -11,6 +11,7 @@ from kivy.uix.textinput import TextInput
 from kivy.uix.image import Image
 from kivy.uix.scrollview import ScrollView
 
+
 # ---------- Database setup ----------
 def init_db():
     conn = sqlite3.connect("medassist.db")
@@ -20,7 +21,8 @@ def init_db():
 
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS medicines (
-        name TEXT PRIMARY KEY,
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT,
         category TEXT,
         dosage_form TEXT,
         strength TEXT,
@@ -29,10 +31,7 @@ def init_db():
         classification TEXT
     )""")
 
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS patients (
-        name TEXT PRIMARY KEY
-    )""")
+    cursor.execute("CREATE TABLE IF NOT EXISTS patients (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT)")
 
     if os.path.exists("MEDICINE_UPDate.csv"):
         with open("MEDICINE_UPDate.csv", newline="", encoding='utf-8-sig') as f:
@@ -60,6 +59,7 @@ def init_db():
     conn.commit()
     conn.close()
 
+
 def clear_all_data():
     conn = sqlite3.connect("medassist.db")
     cursor = conn.cursor()
@@ -69,6 +69,7 @@ def clear_all_data():
     conn.commit()
     conn.close()
 
+
 def add_item(table, name):
     conn = sqlite3.connect("medassist.db")
     cursor = conn.cursor()
@@ -76,41 +77,50 @@ def add_item(table, name):
     conn.commit()
     conn.close()
 
-def get_items(table):
+
+def get_items(table, offset=0, limit=100):
     conn = sqlite3.connect("medassist.db")
     cursor = conn.cursor()
+
     if table == "medicines":
-        cursor.execute("SELECT name, category, dosage_form, strength, manufacturer FROM medicines LIMIT 100")
+        cursor.execute("SELECT id, name, category, dosage_form, strength, manufacturer FROM medicines LIMIT ? OFFSET ?",
+                       (limit, offset))
     else:
-        cursor.execute(f"SELECT name FROM {table} LIMIT 100")
+        cursor.execute(f"SELECT id, name FROM {table} LIMIT ? OFFSET ?", (limit, offset))
+
     items = cursor.fetchall()
     conn.close()
     return items
 
-def get_item_by_name(table, name):
+
+def get_item_by_id(table, item_id):
     conn = sqlite3.connect("medassist.db")
     cursor = conn.cursor()
     if table == "medicines":
-        cursor.execute("SELECT name, category, dosage_form, strength, manufacturer FROM medicines WHERE name=?", (name,))
+        cursor.execute("SELECT id, name, category, dosage_form, strength, manufacturer FROM medicines WHERE id=?",
+                       (item_id,))
     else:
-        cursor.execute(f"SELECT name FROM {table} WHERE name=?", (name,))
+        cursor.execute(f"SELECT id, name FROM {table} WHERE id=?", (item_id,))
     item = cursor.fetchone()
     conn.close()
     return item
 
-def update_item(table, old_name, new_name):
+
+def update_item(table, item_id, name):
     conn = sqlite3.connect("medassist.db")
     cursor = conn.cursor()
-    cursor.execute(f"UPDATE {table} SET name=? WHERE name=?", (new_name, old_name))
+    cursor.execute(f"UPDATE {table} SET name=? WHERE id=?", (name, item_id))
     conn.commit()
     conn.close()
 
-def delete_item(table, name):
+
+def delete_item(table, item_id):
     conn = sqlite3.connect("medassist.db")
     cursor = conn.cursor()
-    cursor.execute(f"DELETE FROM {table} WHERE name=?", (name,))
+    cursor.execute(f"DELETE FROM {table} WHERE id=?", (item_id,))
     conn.commit()
     conn.close()
+
 
 class LoginScreen(Screen):
     def __init__(self, **kwargs):
@@ -160,6 +170,7 @@ class LoginScreen(Screen):
         except sqlite3.IntegrityError:
             self.greeting.text = "Username already exists."
 
+
 class DashboardScreen(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -167,34 +178,43 @@ class DashboardScreen(Screen):
         self.label = Label(text="Welcome!", font_size=24)
         self.layout.add_widget(self.label)
         self.layout.add_widget(Button(text="Medicine", on_press=lambda x: setattr(self.manager, "current", "medicine")))
-
         self.layout.add_widget(Button(text="Patients", on_press=lambda x: setattr(self.manager, "current", "patients")))
         self.add_widget(self.layout)
 
     def update_welcome(self, username):
         self.label.text = f"Welcome, {username}!"
 
+
 class CrudScreen(Screen):
     def __init__(self, name, table, **kwargs):
         super().__init__(name=name, **kwargs)
         self.table = table
-        layout = BoxLayout(orientation="horizontal", padding=10, spacing=10)
+        self.current_page = 1
+        self.items_per_page = 100
 
+        layout = BoxLayout(orientation="vertical", padding=10, spacing=10)
+
+        # Main layout for the list and controls
+        main_layout = BoxLayout(orientation="horizontal", padding=10, spacing=10)
+
+        # Data layout (list area)
         self.data_layout = BoxLayout(orientation="vertical", size_hint=(0.7, 1))
         self.scroll_view = ScrollView(size_hint=(1, 1), bar_width=10, do_scroll_x=True, do_scroll_y=True)
-        self.display = Label(size_hint_y=None, text=f"{table.capitalize()} List:", markup=True)
-        self.display.bind(texture_size=lambda instance, size: setattr(self.display, 'height', size[1]))
-        self.scroll_view.add_widget(self.display)
+        self.list_label = Label(size_hint_y=None, text=f"{table.capitalize()} List:", markup=True)
+        self.list_label.bind(texture_size=lambda instance, size: setattr(self.list_label, 'height', size[1]))
+        self.scroll_view.add_widget(self.list_label)
         self.data_layout.add_widget(self.scroll_view)
 
+        # Controls layout (input and action buttons)
         controls_layout = BoxLayout(orientation="vertical", size_hint=(0.3, 1), spacing=10)
+        self.input_id = TextInput(hint_text="ID (for update/delete)", multiline=False)
         self.input_name = TextInput(hint_text=f"{table[:-1].capitalize()} Name", multiline=False)
 
         refresh_btn = Button(text="Refresh")
         refresh_btn.bind(on_press=self.load_items)
 
-        display_btn = Button(text="Display Selected Name")
-        display_btn.bind(on_press=self.display_selected_name)
+        display_btn = Button(text="Display Selected ID")
+        display_btn.bind(on_press=self.display_selected_id)
 
         add_btn = Button(text=f"Add {table[:-1].capitalize()}")
         add_btn.bind(on_press=self.add_item)
@@ -210,27 +230,69 @@ class CrudScreen(Screen):
 
         controls_layout.add_widget(refresh_btn)
         controls_layout.add_widget(display_btn)
+        controls_layout.add_widget(self.input_id)
         controls_layout.add_widget(self.input_name)
         controls_layout.add_widget(add_btn)
         controls_layout.add_widget(update_btn)
         controls_layout.add_widget(delete_btn)
         controls_layout.add_widget(back_btn)
 
-        layout.add_widget(self.data_layout)
-        layout.add_widget(controls_layout)
+        # Add the main data and controls layouts to the layout
+        main_layout.add_widget(self.data_layout)
+        main_layout.add_widget(controls_layout)
+
+        # Page controls layout (for previous/next buttons)
+        self.page_layout = BoxLayout(orientation="horizontal", size_hint_y=None, height=50, spacing=10)
+        self.page_layout.add_widget(Button(text="Previous", on_press=self.previous_page))
+        self.page_layout.add_widget(Button(text="Next", on_press=self.next_page))
+
+        # Add the main layout and page layout to the screen
+        layout.add_widget(main_layout)
+        layout.add_widget(self.page_layout)
+
         self.add_widget(layout)
 
     def load_items(self, instance):
-        items = get_items(self.table)
-        self.display.text = f"{self.table.capitalize()} List:\n" + "\n".join(f"{i[0]}" for i in items)
+        try:
+            # Calculate the OFFSET based on the current page
+            offset = (self.current_page - 1) * self.items_per_page
+            items = get_items(self.table, offset, self.items_per_page)
 
-    def display_selected_name(self, instance):
-        name = self.input_name.text.strip()
-        item = get_item_by_name(self.table, name)
-        if item:
-            self.display.text = f"Selected {self.table[:-1].capitalize()}:\n{item[0]}"
-        else:
-            self.display.text = "Item not found."
+            if not items:
+                self.list_label.text = f"{self.table.capitalize()} List: No items found."
+                return
+
+            # Update the list display with fetched items
+            if self.table == "medicines":
+                self.list_label.text = f"{self.table.capitalize()} List:\n" + "\n".join(
+                    f"{i[0]}: {i[1]} ({i[2]}, {i[3]}, {i[4]}, {i[5]})" for i in items)
+            else:
+                self.list_label.text = f"{self.table.capitalize()} List:\n" + "\n".join(
+                    f"{i[0]}: {i[1]}" for i in items)
+
+        except Exception as e:
+            print(f"Error loading items: {e}")
+            self.list_label.text = "Error loading items."
+
+    def previous_page(self, instance):
+        if self.current_page > 1:
+            self.current_page -= 1
+            self.load_items(instance)
+
+    def next_page(self, instance):
+        self.current_page += 1
+        self.load_items(instance)
+
+    def display_selected_id(self, instance):
+        try:
+            item_id = int(self.input_id.text)
+            item = get_item_by_id(self.table, item_id)
+            if item:
+                self.list_label.text = f"Selected {self.table.capitalize()}:\n" + str(item)
+            else:
+                self.list_label.text = f"{self.table.capitalize()} not found."
+        except ValueError:
+            self.list_label.text = "Invalid ID."
 
     def add_item(self, instance):
         name = self.input_name.text.strip()
@@ -239,26 +301,32 @@ class CrudScreen(Screen):
             self.load_items(instance)
 
     def update_item(self, instance):
-        name = self.input_name.text.strip()
-        new_name = self.input_name.text.strip()
-        if name and new_name:
-            update_item(self.table, name, new_name)
-            self.load_items(instance)
+        try:
+            item_id = int(self.input_id.text)
+            name = self.input_name.text.strip()
+            if item_id and name:
+                update_item(self.table, item_id, name)
+                self.load_items(instance)
+        except ValueError:
+            self.list_label.text = "Invalid ID."
 
     def delete_item(self, instance):
-        name = self.input_name.text.strip()
-        if name:
-            delete_item(self.table, name)
+        try:
+            item_id = int(self.input_id.text)
+            delete_item(self.table, item_id)
             self.load_items(instance)
+        except ValueError:
+            self.list_label.text = "Invalid ID."
+
 
 class MedAssistApp(App):
     def build(self):
         init_db()
         self.conn = sqlite3.connect("medassist.db")
         self.cursor = self.conn.cursor()
-        self.username = ""
 
         self.screen_manager = ScreenManager()
+
         self.screen_manager.add_widget(LoginScreen(name="login"))
         self.screen_manager.add_widget(DashboardScreen(name="dashboard"))
         self.screen_manager.add_widget(CrudScreen(name="medicine", table="medicines"))
@@ -266,8 +334,6 @@ class MedAssistApp(App):
 
         return self.screen_manager
 
-    def on_stop(self):
-        self.conn.close()
 
 if __name__ == "__main__":
     MedAssistApp().run()
