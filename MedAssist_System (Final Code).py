@@ -89,7 +89,7 @@ def init_db():
         print("Existing tables:", [table[0] for table in tables])
 
         # Import data from CSV if it exists and has been modified
-        csv_path = "MEDICINE.csv"
+        csv_path = "medicine.csv"
         if os.path.exists(csv_path):
             current_mtime = int(os.path.getmtime(csv_path))
 
