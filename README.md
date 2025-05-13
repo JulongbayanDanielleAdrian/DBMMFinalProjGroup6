@@ -1,2 +1,1 @@
-aaaaaaaaaaaaaaaaaaaaaa
-ayo baliktad mga backbone HAHAHAHAHAHAHA
+- baliktad backbone
